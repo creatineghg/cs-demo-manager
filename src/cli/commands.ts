@@ -7,6 +7,9 @@ import { JsonCommand } from './commands/json-command';
 import { VideoCommand } from './commands/video-command';
 import { DownloadRenownCommand } from './commands/download-renown-command';
 import { Download5EPlayCommand } from './commands/download-5eplay-command';
+import { MatchesCommand } from './commands/matches-command';
+import { HighlightsCommand } from './commands/highlights-command';
+import { DoctorCommand } from './commands/doctor-command';
 
 export const commands = {
   [AnalyzeCommand.Name]: AnalyzeCommand,
@@ -18,4 +21,7 @@ export const commands = {
   [JsonCommand.Name]: JsonCommand,
   [XlsxCommand.Name]: XlsxCommand,
   [VideoCommand.Name]: VideoCommand,
+  [MatchesCommand.Name]: MatchesCommand,
+  [HighlightsCommand.Name]: HighlightsCommand,
+  [DoctorCommand.Name]: DoctorCommand,
 };
