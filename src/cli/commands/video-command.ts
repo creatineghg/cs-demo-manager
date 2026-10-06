@@ -23,7 +23,8 @@ import { fetchPlayer } from 'csdm/node/database/player/fetch-player';
 import { CliClientMessageName } from 'csdm/server/messages/cli-client-message-name';
 import { ServerPushMessageName } from 'csdm/server/messages/server-push-message-name';
 import type { CliWebSocketClient } from 'csdm/cli/web-socket/cli-web-socket-client';
-import type { FfmpegSettings } from 'csdm/node/settings/settings';
+import type { FfmpegSettings, Settings } from 'csdm/node/settings/settings';
+import { executeFfmpeg } from 'csdm/node/video/ffmpeg/execute-ffmpeg';
 import type { Sequence } from 'csdm/common/types/sequence';
 import { isValidPlayerSequenceEvent, PlayerSequenceEvent } from 'csdm/common/types/player-sequence-event';
 import type { PlayerSequenceEvent as PlayerSequenceEventType } from 'csdm/common/types/player-sequence-event';
@@ -102,6 +103,18 @@ function isQueueSubCommand(arg: string | undefined): arg is QueueSubCommand {
   return Object.values(QueueSubCommand).includes(arg as QueueSubCommand);
 }
 
+type VideoGenerationResult = {
+  videoId: string;
+  outputFolderPath: string;
+  files: string[];
+};
+
+class NoSequencesError extends Error {
+  public constructor() {
+    super('No sequences generated. Check that the players have matching events in the demo.');
+  }
+}
+
 type SequenceSettings = {
   showOnlyDeathNotices: boolean;
   showXRay: boolean;
@@ -168,8 +181,10 @@ export class VideoCommand extends Command {
   private readonly noAnalyzeFlag = 'no-analyze';
   private readonly jsonFlag = 'json';
   private readonly hidePlayerNamesFlag = 'hide-player-names';
+  private readonly mergeOutputFlag = 'merge-output';
   private outputFolderPath: string | undefined;
-  private demoPath: string = '';
+  private demoPaths: string[] = [];
+  private mergeOutputFilePath: string | undefined;
   private startTick: number = 0;
   private endTick: number = 0;
   private framerate: number | undefined;
@@ -228,7 +243,9 @@ export class VideoCommand extends Command {
     console.log(
       `       csdm ${VideoCommand.Name} <demoPath> --mode ${Mode.Player} --steamids <id1,id2> --event <event> [options]`,
     );
-    console.log(`       csdm ${VideoCommand.Name} <demoPath> --mode ${Mode.Highlights} --steamids <id1,id2> [options]`);
+    console.log(
+      `       csdm ${VideoCommand.Name} <demoPath> [demoPath2...] --mode ${Mode.Highlights} --steamids <id1,id2> [options]`,
+    );
     console.log(`       csdm ${VideoCommand.Name} <${Object.values(QueueSubCommand).join('|')}>`);
     console.log('');
     console.log('The demo is analyzed first if it is not in the database yet (disable it with --no-analyze).');
@@ -315,6 +332,9 @@ export class VideoCommand extends Command {
     console.log(`  --${this.topFlag} <number> (keep only the N highlights with the best score)`);
     console.log(`  --${this.roundsFlag}, --${this.weaponsFlag}, --${this.headshotsOnlyFlag} (same as player mode)`);
     console.log(
+      `  --${this.mergeOutputFlag} <file> (player and highlights modes, merge the videos of all demos into this file, same container as the videos)`,
+    );
+    console.log(
       `  --${this.hidePlayerNamesFlag} <all|others> (player and highlights modes, HLAE, replace names in the kill feed, "others" keeps the --${this.steamIdsFlag} players names)`,
     );
     console.log(
@@ -339,165 +359,69 @@ export class VideoCommand extends Command {
       await migrateSettings();
 
       const settings = await getSettings();
-      const demo = await getDemoFromFilePath(this.demoPath);
-      const resolution = { width: this.width ?? settings.video.width, height: this.height ?? settings.video.height };
-
-      let parameters: AddVideoPayload = {
-        demoPath: this.demoPath,
-        // The queue nests the video output in a folder named after the video id.
-        outputFolderPath: this.outputFolderPath ?? path.dirname(this.demoPath),
-        checksum: demo.checksum,
-        game: demo.game,
-        mapName: demo.mapName,
-        tickrate: demo.tickrate,
-        recordingSystem: this.recordingSystem ?? settings.video.recordingSystem,
-        recordingOutput: this.recordingOutput ?? settings.video.recordingOutput,
-        encoderSoftware: this.encoderSoftware ?? settings.video.encoderSoftware,
-        framerate: this.framerate ?? settings.video.framerate,
-        width: resolution.width,
-        height: resolution.height,
-        closeGameAfterRecording: this.closeGameAfterRecording ?? settings.video.closeGameAfterRecording,
-        concatenateSequences: this.concatenateSequences ?? settings.video.concatenateSequences,
-        outputFileName: this.outputFileName ?? settings.video.outputFileName,
-        trueView: this.trueView ?? settings.video.trueView,
-        fastSeek: this.fastSeek ?? settings.video.fastSeek ?? true,
-        windowMode: this.windowMode ?? settings.video.windowMode ?? RecordingWindowMode.Normal,
-        sequences: [],
-        ffmpegSettings: {
-          ...settings.video.ffmpegSettings,
-          customLocationEnabled:
-            this.ffmpegExecutablePath !== undefined ? true : settings.video.ffmpegSettings.customLocationEnabled,
-          customExecutableLocation: this.ffmpegExecutablePath ?? settings.video.ffmpegSettings.customExecutableLocation,
-        },
-      };
+      const payloads: AddVideoPayload[] = [];
       let preset = this.preset;
-
-      const config = this.config;
-      const sequenceSettings = {
-        showOnlyDeathNotices: this.showOnlyDeathNotices ?? settings.video.showOnlyDeathNotices,
-        showXRay: this.showXRay ?? settings.video.showXRay,
-        showAssists: this.showAssists ?? settings.video.showAssists,
-        recordAudio: this.recordAudio ?? settings.video.recordAudio,
-        playerVoicesEnabled: this.playerVoices ?? settings.video.playerVoicesEnabled,
-        deathNoticesDuration: this.deathNoticesDuration ?? settings.video.deathNoticesDuration,
-      };
-      if (config) {
-        parameters = {
-          ...parameters,
-          recordingSystem: config.recordingSystem ?? parameters.recordingSystem,
-          recordingOutput: config.recordingOutput ?? parameters.recordingOutput,
-          encoderSoftware: config.encoderSoftware ?? parameters.encoderSoftware,
-          framerate: config.framerate ?? parameters.framerate,
-          width: config.width ?? parameters.width,
-          height: config.height ?? parameters.height,
-          trueView: config.trueView ?? parameters.trueView,
-          fastSeek: config.fastSeek ?? parameters.fastSeek,
-          windowMode: config.windowMode ?? parameters.windowMode,
-          closeGameAfterRecording: config.closeGameAfterRecording ?? parameters.closeGameAfterRecording,
-          concatenateSequences: config.concatenateSequences ?? parameters.concatenateSequences,
-          outputFileName: config.outputFileName ?? parameters.outputFileName,
-          ffmpegSettings: config.ffmpegSettings ?? parameters.ffmpegSettings,
-          outputFolderPath: config.outputFolderPath ?? parameters.outputFolderPath,
-          sequences: config.sequences ?? parameters.sequences,
-        };
-        if (config.ffmpegSettings === undefined) {
-          preset = preset ?? config.ffmpegPreset;
+      for (const demoPath of this.demoPaths) {
+        try {
+          const { payload, configPreset } = await this.buildVideoPayload(demoPath, settings);
+          preset = preset ?? configPreset;
+          payloads.push(payload);
+        } catch (error) {
+          // Don't stop the whole batch because one demo has no matching events.
+          if (this.demoPaths.length > 1 && error instanceof NoSequencesError) {
+            this.output.logOrEvent(`${demoPath}: ${error.message}`, 'skipped', { demoPath, reason: error.message });
+            continue;
+          }
+          throw error;
         }
-      } else if (this.mode === Mode.Player || this.mode === Mode.Highlights) {
-        if (this.steamIds.length === 0) {
-          throw new InvalidArgument(`--${this.steamIdsFlag} is required for ${this.mode} mode`);
-        }
+      }
 
-        const { match } = await getOrAnalyzeMatch({
-          demoPath: this.demoPath,
-          output: this.output,
-          analyze: this.analyze,
-          connectToDaemon: () => this.connectToDaemon(),
-        });
-
-        parameters.sequences =
-          this.mode === Mode.Highlights
-            ? this.buildHighlightsSequences(match, sequenceSettings)
-            : this.buildPlayerSequences(match, sequenceSettings);
-
-        if (parameters.sequences.length === 0) {
-          throw new Error('No sequences generated. Check that the players have matching events in the demo.');
-        }
-
-        const { hidePlayerNames } = this;
-        if (hidePlayerNames) {
-          const keepSteamIds = hidePlayerNames === 'others' ? this.steamIds : [];
-          parameters.sequences = parameters.sequences.map((sequence) => {
-            return {
-              ...sequence,
-              playersOptions: anonymizePlayersOptions(
-                sequence.playersOptions,
-                keepSteamIds,
-                (index) => `Player ${index}`,
-              ),
-            };
-          });
-        }
-      } else {
-        const player = this.focusPlayerSteamId ? await fetchPlayer(this.focusPlayerSteamId) : undefined;
-        parameters.sequences = [
-          {
-            number: 1,
-            startTick: this.startTick,
-            endTick: this.endTick,
-            showXRay: sequenceSettings.showXRay,
-            showAssists: sequenceSettings.showAssists,
-            showOnlyDeathNotices: sequenceSettings.showOnlyDeathNotices,
-            playersOptions: [],
-            cameras: [],
-            recordAudio: sequenceSettings.recordAudio,
-            playerCameras: player
-              ? [
-                  {
-                    tick: this.startTick,
-                    playerSteamId: player.steamId,
-                    playerName: player.name,
-                  },
-                ]
-              : [],
-            playerVoicesEnabled: sequenceSettings.playerVoicesEnabled,
-            deathNoticesDuration: sequenceSettings.deathNoticesDuration,
-            cfg: this.cfg,
-          },
-        ];
+      if (payloads.length === 0) {
+        throw new Error('No videos to generate, no sequences found in the demos.');
       }
 
       const client = await this.connectToDaemon();
-      await this.installDependenciesIfNecessary(client, parameters);
+      await this.installDependenciesIfNecessary(client, payloads[0]);
 
-      if (!config?.ffmpegSettings) {
-        const presetSettings = await this.resolvePresetSettings(preset, parameters);
-        parameters.ffmpegSettings = this.applyFfmpegFlags({ ...parameters.ffmpegSettings, ...presetSettings });
+      if (!this.config?.ffmpegSettings) {
+        // Resolved once, the auto preset runs test encodes.
+        const presetSettings = await this.resolvePresetSettings(preset, payloads[0]);
+        for (const payload of payloads) {
+          payload.ffmpegSettings = this.applyFfmpegFlags({ ...payload.ffmpegSettings, ...presetSettings });
+        }
       }
 
-      this.output.event('start', {
-        demoPath: parameters.demoPath,
-        checksum: parameters.checksum,
-        sequenceCount: parameters.sequences.length,
-        sequences: parameters.sequences.map(({ number, startTick, endTick }) => ({ number, startTick, endTick })),
-        width: parameters.width,
-        height: parameters.height,
-        framerate: parameters.framerate,
-        recordingSystem: parameters.recordingSystem,
-        videoCodec: parameters.ffmpegSettings.videoCodec,
-        videoContainer: parameters.ffmpegSettings.videoContainer,
-      });
+      const videos: Video[] = [];
+      for (const payload of payloads) {
+        this.output.event('start', {
+          demoPath: payload.demoPath,
+          checksum: payload.checksum,
+          sequenceCount: payload.sequences.length,
+          sequences: payload.sequences.map(({ number, startTick, endTick }) => ({ number, startTick, endTick })),
+          width: payload.width,
+          height: payload.height,
+          framerate: payload.framerate,
+          recordingSystem: payload.recordingSystem,
+          videoCodec: payload.ffmpegSettings.videoCodec,
+          videoContainer: payload.ffmpegSettings.videoContainer,
+        });
 
-      const video = await client.send(
-        {
-          name: CliClientMessageName.AddVideoToQueue,
-          payload: parameters,
-        },
-        { timeoutMs: 30_000 },
-      );
+        const video = await client.send(
+          {
+            name: CliClientMessageName.AddVideoToQueue,
+            payload,
+          },
+          { timeoutMs: 30_000 },
+        );
+        videos.push(video);
+      }
 
-      await this.waitForVideoGeneration(client, video);
+      const results = await this.waitForVideosGeneration(client, videos);
       client.close();
+
+      if (this.mergeOutputFilePath) {
+        await this.mergeVideos(results, payloads[0]);
+      }
     } catch (error) {
       if (error instanceof Error) {
         this.output.error(error.message);
@@ -511,6 +435,179 @@ export class VideoCommand extends Command {
       }
       this.exitWithFailure();
     }
+  }
+
+  private async buildVideoPayload(
+    demoPath: string,
+    settings: Settings,
+  ): Promise<{ payload: AddVideoPayload; configPreset: FfmpegPresetId | 'auto' | undefined }> {
+    const demo = await getDemoFromFilePath(demoPath);
+    let configPreset: FfmpegPresetId | 'auto' | undefined;
+
+    let parameters: AddVideoPayload = {
+      demoPath,
+      // The queue nests the video output in a folder named after the video id.
+      outputFolderPath: this.outputFolderPath ?? path.dirname(demoPath),
+      checksum: demo.checksum,
+      game: demo.game,
+      mapName: demo.mapName,
+      tickrate: demo.tickrate,
+      recordingSystem: this.recordingSystem ?? settings.video.recordingSystem,
+      recordingOutput: this.recordingOutput ?? settings.video.recordingOutput,
+      encoderSoftware: this.encoderSoftware ?? settings.video.encoderSoftware,
+      framerate: this.framerate ?? settings.video.framerate,
+      width: this.width ?? settings.video.width,
+      height: this.height ?? settings.video.height,
+      closeGameAfterRecording: this.closeGameAfterRecording ?? settings.video.closeGameAfterRecording,
+      concatenateSequences: this.concatenateSequences ?? settings.video.concatenateSequences,
+      outputFileName: this.outputFileName ?? settings.video.outputFileName,
+      trueView: this.trueView ?? settings.video.trueView,
+      fastSeek: this.fastSeek ?? settings.video.fastSeek ?? true,
+      windowMode: this.windowMode ?? settings.video.windowMode ?? RecordingWindowMode.Normal,
+      sequences: [],
+      ffmpegSettings: {
+        ...settings.video.ffmpegSettings,
+        customLocationEnabled:
+          this.ffmpegExecutablePath !== undefined ? true : settings.video.ffmpegSettings.customLocationEnabled,
+        customExecutableLocation: this.ffmpegExecutablePath ?? settings.video.ffmpegSettings.customExecutableLocation,
+      },
+    };
+
+    const config = this.config;
+    const sequenceSettings = {
+      showOnlyDeathNotices: this.showOnlyDeathNotices ?? settings.video.showOnlyDeathNotices,
+      showXRay: this.showXRay ?? settings.video.showXRay,
+      showAssists: this.showAssists ?? settings.video.showAssists,
+      recordAudio: this.recordAudio ?? settings.video.recordAudio,
+      playerVoicesEnabled: this.playerVoices ?? settings.video.playerVoicesEnabled,
+      deathNoticesDuration: this.deathNoticesDuration ?? settings.video.deathNoticesDuration,
+    };
+    if (config) {
+      parameters = {
+        ...parameters,
+        recordingSystem: config.recordingSystem ?? parameters.recordingSystem,
+        recordingOutput: config.recordingOutput ?? parameters.recordingOutput,
+        encoderSoftware: config.encoderSoftware ?? parameters.encoderSoftware,
+        framerate: config.framerate ?? parameters.framerate,
+        width: config.width ?? parameters.width,
+        height: config.height ?? parameters.height,
+        trueView: config.trueView ?? parameters.trueView,
+        fastSeek: config.fastSeek ?? parameters.fastSeek,
+        windowMode: config.windowMode ?? parameters.windowMode,
+        closeGameAfterRecording: config.closeGameAfterRecording ?? parameters.closeGameAfterRecording,
+        concatenateSequences: config.concatenateSequences ?? parameters.concatenateSequences,
+        outputFileName: config.outputFileName ?? parameters.outputFileName,
+        ffmpegSettings: config.ffmpegSettings ?? parameters.ffmpegSettings,
+        outputFolderPath: config.outputFolderPath ?? parameters.outputFolderPath,
+        sequences: config.sequences ?? parameters.sequences,
+      };
+      if (config.ffmpegSettings === undefined) {
+        configPreset = config.ffmpegPreset;
+      }
+    } else if (this.mode === Mode.Player || this.mode === Mode.Highlights) {
+      if (this.steamIds.length === 0) {
+        throw new InvalidArgument(`--${this.steamIdsFlag} is required for ${this.mode} mode`);
+      }
+
+      const { match } = await getOrAnalyzeMatch({
+        demoPath,
+        output: this.output,
+        analyze: this.analyze,
+        connectToDaemon: () => this.connectToDaemon(),
+      });
+
+      parameters.sequences =
+        this.mode === Mode.Highlights
+          ? this.buildHighlightsSequences(match, sequenceSettings)
+          : this.buildPlayerSequences(match, sequenceSettings);
+
+      if (parameters.sequences.length === 0) {
+        throw new NoSequencesError();
+      }
+
+      const { hidePlayerNames } = this;
+      if (hidePlayerNames) {
+        const keepSteamIds = hidePlayerNames === 'others' ? this.steamIds : [];
+        parameters.sequences = parameters.sequences.map((sequence) => {
+          return {
+            ...sequence,
+            playersOptions: anonymizePlayersOptions(
+              sequence.playersOptions,
+              keepSteamIds,
+              (index) => `Player ${index}`,
+            ),
+          };
+        });
+      }
+    } else {
+      const player = this.focusPlayerSteamId ? await fetchPlayer(this.focusPlayerSteamId) : undefined;
+      parameters.sequences = [
+        {
+          number: 1,
+          startTick: this.startTick,
+          endTick: this.endTick,
+          showXRay: sequenceSettings.showXRay,
+          showAssists: sequenceSettings.showAssists,
+          showOnlyDeathNotices: sequenceSettings.showOnlyDeathNotices,
+          playersOptions: [],
+          cameras: [],
+          recordAudio: sequenceSettings.recordAudio,
+          playerCameras: player
+            ? [
+                {
+                  tick: this.startTick,
+                  playerSteamId: player.steamId,
+                  playerName: player.name,
+                },
+              ]
+            : [],
+          playerVoicesEnabled: sequenceSettings.playerVoicesEnabled,
+          deathNoticesDuration: sequenceSettings.deathNoticesDuration,
+          cfg: this.cfg,
+        },
+      ];
+    }
+
+    return { payload: parameters, configPreset };
+  }
+
+  // Merges the videos generated for all demos into a single file, in the order of the demos and sequences.
+  private async mergeVideos(results: VideoGenerationResult[], payload: AddVideoPayload) {
+    const outputFilePath = this.mergeOutputFilePath;
+    if (!outputFilePath) {
+      return;
+    }
+
+    const { videoContainer } = payload.ffmpegSettings;
+    const videoFiles = results.flatMap(({ files }) => {
+      return files.filter((file) => file.toLowerCase().endsWith(`.${videoContainer}`));
+    });
+    if (videoFiles.length === 0) {
+      throw new Error('No video files to merge.');
+    }
+
+    this.output.logOrEvent(`Merging ${videoFiles.length} videos into ${outputFilePath}...`, 'merging', {
+      fileCount: videoFiles.length,
+      outputFilePath,
+    });
+    await fs.ensureDir(path.dirname(outputFilePath));
+    const listFilePath = `${outputFilePath}.txt`;
+    await fs.writeFile(
+      listFilePath,
+      videoFiles.map((file) => `file '${file.replaceAll("'", String.raw`'\''`)}'`).join('\n'),
+      'utf8',
+    );
+    try {
+      await executeFfmpeg(
+        getFfmpegExecutablePathFromSettings(payload.ffmpegSettings),
+        ['-y', '-f concat', '-safe 0', `-i "${listFilePath}"`, '-c copy', `"${outputFilePath}"`],
+        new AbortController().signal,
+      );
+    } finally {
+      await fs.remove(listFilePath);
+    }
+
+    this.output.logOrEvent(`Videos merged into ${outputFilePath}`, 'merged', { outputFilePath });
   }
 
   private buildPlayerSequences(match: Match, sequenceSettings: SequenceSettings): Sequence[] {
@@ -706,64 +803,77 @@ export class VideoCommand extends Command {
     }
   }
 
-  private async waitForVideoGeneration(client: CliWebSocketClient, video: Video) {
+  private async waitForVideosGeneration(client: CliWebSocketClient, videos: Video[]) {
     let resolveCompletion: () => void;
     const completion = new Promise<void>((resolve) => {
       resolveCompletion = resolve;
     });
     let hasError = false;
-    let lastPrintedProgress = '';
-    let outputFolderPath = video.outputFolderPath;
+    const lastPrintedProgressPerVideoId = new Map<string, string>();
+    const outputFolderPathPerVideoId = new Map(videos.map((video) => [video.id, video.outputFolderPath]));
+    const pendingVideoIds = new Set(videos.map((video) => video.id));
+    const succeededVideoIds = new Set<string>();
+
+    const markVideoAsDone = (videoId: string) => {
+      pendingVideoIds.delete(videoId);
+      if (pendingVideoIds.size === 0) {
+        resolveCompletion();
+      }
+    };
 
     const onVideoUpdated = (updatedVideo: Video) => {
-      if (updatedVideo.id !== video.id) {
+      if (!pendingVideoIds.has(updatedVideo.id)) {
         return;
       }
 
       const progress = `${updatedVideo.status}:${updatedVideo.currentSequence ?? ''}`;
-      if (progress === lastPrintedProgress) {
+      if (progress === lastPrintedProgressPerVideoId.get(updatedVideo.id)) {
         return;
       }
-      lastPrintedProgress = progress;
-      outputFolderPath = updatedVideo.outputFolderPath;
+      lastPrintedProgressPerVideoId.set(updatedVideo.id, progress);
+      outputFolderPathPerVideoId.set(updatedVideo.id, updatedVideo.outputFolderPath);
       const progressEvent = {
         videoId: updatedVideo.id,
+        demoPath: updatedVideo.demoPath,
         status: updatedVideo.status,
         currentSequence: updatedVideo.currentSequence,
         currentSequencePosition: updatedVideo.currentSequencePosition,
         sequenceCount: updatedVideo.sequences.length,
       };
+      const prefix = videos.length > 1 ? `[${path.basename(updatedVideo.demoPath)}] ` : '';
 
       switch (updatedVideo.status) {
         case VideoStatus.Recording:
           this.output.logOrEvent(
             updatedVideo.currentSequence === undefined
-              ? 'Recording in progress...'
-              : `Recording sequence #${updatedVideo.currentSequence} (${updatedVideo.currentSequencePosition}/${updatedVideo.sequences.length})...`,
+              ? `${prefix}Recording in progress...`
+              : `${prefix}Recording sequence #${updatedVideo.currentSequence} (${updatedVideo.currentSequencePosition}/${updatedVideo.sequences.length})...`,
             'progress',
             progressEvent,
           );
           break;
         case VideoStatus.MovingFiles:
-          this.output.logOrEvent('Moving files...', 'progress', progressEvent);
+          this.output.logOrEvent(`${prefix}Moving files...`, 'progress', progressEvent);
           break;
         case VideoStatus.Converting:
           this.output.logOrEvent(
-            `Converting sequence #${updatedVideo.currentSequence} (${updatedVideo.currentSequencePosition}/${updatedVideo.sequences.length})...`,
+            `${prefix}Converting sequence #${updatedVideo.currentSequence} (${updatedVideo.currentSequencePosition}/${updatedVideo.sequences.length})...`,
             'progress',
             progressEvent,
           );
           break;
         case VideoStatus.Concatenating:
-          this.output.logOrEvent('Concatenating sequences...', 'progress', progressEvent);
+          this.output.logOrEvent(`${prefix}Concatenating sequences...`, 'progress', progressEvent);
           break;
         case VideoStatus.Success:
-          resolveCompletion();
+          succeededVideoIds.add(updatedVideo.id);
+          markVideoAsDone(updatedVideo.id);
           break;
         case VideoStatus.Error:
           hasError = true;
-          this.output.error('Error while generating the video', {
+          this.output.error(`${prefix}Error while generating the video`, {
             videoId: updatedVideo.id,
+            demoPath: updatedVideo.demoPath,
             errorCode: updatedVideo.errorCode,
             details: updatedVideo.output,
           });
@@ -775,16 +885,18 @@ export class VideoCommand extends Command {
               console.error(updatedVideo.output);
             }
           }
-          resolveCompletion();
+          markVideoAsDone(updatedVideo.id);
           break;
       }
     };
 
     const onVideosRemovedFromQueue = (removedVideoIds: string[]) => {
-      if (removedVideoIds.includes(video.id)) {
-        hasError = true;
-        this.output.error('The video has been removed from the queue', { videoId: video.id });
-        resolveCompletion();
+      for (const videoId of removedVideoIds) {
+        if (pendingVideoIds.has(videoId)) {
+          hasError = true;
+          this.output.error('The video has been removed from the queue', { videoId });
+          markVideoAsDone(videoId);
+        }
       }
     };
 
@@ -793,20 +905,33 @@ export class VideoCommand extends Command {
 
     // The queue starts paused: resuming it starts the generation, processing any video queued before this one first.
     await client.send({ name: CliClientMessageName.ResumeVideoQueue });
-    this.output.logOrEvent('Waiting for the video generation...', 'queued', { videoId: video.id });
+    this.output.logOrEvent('Waiting for the video generation...', 'queued', {
+      videoIds: videos.map((video) => video.id),
+    });
 
     await completion;
+
+    const results: VideoGenerationResult[] = [];
+    for (const video of videos) {
+      if (!succeededVideoIds.has(video.id)) {
+        continue;
+      }
+      const outputFolderPath = outputFolderPathPerVideoId.get(video.id) ?? video.outputFolderPath;
+      const files = await this.listOutputFiles(outputFolderPath);
+      results.push({ videoId: video.id, outputFolderPath, files });
+      this.output.logOrEvent(`Video generated in ${outputFolderPath}`, 'done', {
+        videoId: video.id,
+        demoPath: video.demoPath,
+        outputFolderPath,
+        files,
+      });
+    }
 
     if (hasError) {
       this.exitWithFailure();
     }
 
-    const files = await this.listOutputFiles(outputFolderPath);
-    this.output.logOrEvent(`Video generated in ${outputFolderPath}`, 'done', {
-      videoId: video.id,
-      outputFolderPath,
-      files,
-    });
+    return results;
   }
 
   // Returns the absolute paths of the files generated in the video output folder (videos or raw files folders).
@@ -881,6 +1006,7 @@ export class VideoCommand extends Command {
         [this.noAnalyzeFlag]: { type: 'boolean' },
         [this.jsonFlag]: { type: 'boolean' },
         [this.hidePlayerNamesFlag]: { type: 'string' },
+        [this.mergeOutputFlag]: { type: 'string' },
       },
       allowPositionals: true,
       args: this.args,
@@ -904,7 +1030,7 @@ export class VideoCommand extends Command {
         if (typeof demoPath !== 'string' || !demoPath.endsWith('.dem')) {
           throw new InvalidArgument('Invalid demo path');
         }
-        this.demoPath = path.resolve(demoPath);
+        this.demoPaths = [path.resolve(demoPath)];
         return;
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
@@ -922,7 +1048,7 @@ export class VideoCommand extends Command {
     if (typeof demoPath !== 'string' || !demoPath.endsWith('.dem')) {
       throw new InvalidArgument('Invalid demo path');
     }
-    this.demoPath = path.resolve(demoPath);
+    this.demoPaths = [path.resolve(demoPath)];
 
     const mode = values[this.modeFlag];
     if (typeof mode === 'string') {
@@ -930,6 +1056,19 @@ export class VideoCommand extends Command {
         throw new InvalidArgument(`Invalid mode. Supported values: ${Object.values(Mode).join(', ')}`);
       }
       this.mode = mode;
+
+      // Ticks are not used in these modes, all positionals are demos, one video is generated per demo.
+      for (const positional of positionals) {
+        if (!positional.endsWith('.dem')) {
+          throw new InvalidArgument(`Invalid demo path: ${positional}`);
+        }
+      }
+      this.demoPaths = [...new Set(positionals.map((positional) => path.resolve(positional)))];
+
+      const mergeOutput = values[this.mergeOutputFlag];
+      if (typeof mergeOutput === 'string') {
+        this.mergeOutputFilePath = path.resolve(mergeOutput);
+      }
 
       const steamIdsValue = values[this.steamIdsFlag];
       if (typeof steamIdsValue !== 'string') {

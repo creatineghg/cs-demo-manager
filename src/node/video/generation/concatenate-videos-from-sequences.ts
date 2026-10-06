@@ -27,8 +27,9 @@ export async function concatenateVideosFromSequences(
   await fs.writeFile(
     listFilePath,
     videoPaths
-      .map((path) => {
-        return `file '${path}'`;
+      .map((videoPath) => {
+        // Single quotes must be escaped in the concat demuxer list file, e.g. C:\Users\O'Brien\videos
+        return `file '${videoPath.replaceAll("'", String.raw`'\''`)}'`;
       })
       .join('\n'),
     'utf8',
