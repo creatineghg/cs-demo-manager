@@ -14,6 +14,7 @@ import { FfmpegInputParametersInput } from './ffmpeg-input-parameters-input';
 import { FfmpegOutputParametersInput } from './ffmpeg-output-parameters-input';
 import { VideoContainerSelect } from './video-container-select';
 import { RecordingOutput } from 'csdm/common/types/recording-output';
+import { FfmpegPresetSelect } from './ffmpeg-preset-select';
 
 export function Ffmpeg() {
   const installedFfmpegVersion = useInstalledFfmpegVersion();
@@ -31,6 +32,7 @@ export function Ffmpeg() {
         <FfmpegBrowseButton />
       </Software>
       <div className="flex flex-col gap-y-8">
+        <FfmpegPresetSelect />
         <div className="flex flex-wrap gap-8">
           <AudioCodecInput />
           <FfmpegAudioBitrateSelect />

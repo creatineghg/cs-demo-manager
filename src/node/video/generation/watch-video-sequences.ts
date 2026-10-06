@@ -30,6 +30,7 @@ type Parameters = {
   demoPath: string;
   sequences: Sequence[];
   trueView: boolean;
+  fastSeek?: boolean;
 };
 
 export async function watchVideoSequences(parameters: Parameters) {

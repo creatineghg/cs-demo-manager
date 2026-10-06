@@ -13,6 +13,7 @@ import type { RecordingOutput } from 'csdm/common/types/recording-output';
 import type { DisplayMode } from 'csdm/common/types/display-mode';
 import type { ArchiveFormat } from 'csdm/common/types/archive-format';
 import type { DatabaseMode } from 'csdm/common/types/database-mode';
+import type { RecordingWindowMode } from 'csdm/common/types/recording-window-mode';
 
 export type Folder = {
   path: string;
@@ -171,6 +172,10 @@ export type VideoSettings = {
   deathNoticesDuration: number;
   hlae: HlaeSettings;
   trueView: boolean; // CS2 only
+  // CS2 only. Don't restart the playback from the beginning of the demo between sequences when possible.
+  fastSeek: boolean;
+  // @platform win32 How the game window behaves while recording.
+  windowMode: RecordingWindowMode;
 };
 
 type BanSettings = {

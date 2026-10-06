@@ -223,16 +223,22 @@ export class JSONActionsFileGenerator {
     return this;
   }
 
-  public async write() {
-    if (this.currentSequence.actions.length !== 0) {
-      this.sequences.push(this.currentSequence);
+  // Returns the sequences that will be written in the JSON file.
+  public build(): Sequence[] {
+    if (this.currentSequence.actions.length === 0) {
+      return this.sequences;
     }
 
-    if (this.sequences.length === 0) {
+    return [...this.sequences, this.currentSequence];
+  }
+
+  public async write() {
+    const sequences = this.build();
+    if (sequences.length === 0) {
       return;
     }
 
-    await fs.writeFile(this.filePath, JSON.stringify(this.sequences, null, 2));
+    await fs.writeFile(this.filePath, JSON.stringify(sequences, null, 2));
   }
 
   private getValidTick(tick: number): number {

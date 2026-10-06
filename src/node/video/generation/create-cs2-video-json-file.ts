@@ -10,10 +10,56 @@ import { RecordingSystem } from 'csdm/common/types/recording-system';
 import { EncoderSoftware } from 'csdm/common/types/encoder-software';
 import type { VideoContainer } from 'csdm/common/types/video-container';
 import type { Camera } from 'csdm/common/types/camera';
-import { lastArrayItem } from 'csdm/common/array/last-array-item';
+import { hasPixelFormatParameter } from 'csdm/node/video/ffmpeg/ffmpeg-presets';
 
 function getHlaeOutputFolderPath(outputFolderPath: string, sequence: Sequence) {
   return `${windowsToUnixPathSeparator(outputFolderPath)}/${getSequenceName(sequence)}`;
+}
+
+// How many ticks the playback continues after the end of a sequence before going to the next one.
+// It gives time to the game/HLAE to finish writing the sequence's files.
+const SEQUENCE_END_MARGIN_TICKS = 64;
+
+// When the next sequence starts less than this number of seconds after the end of the previous one (margin included),
+// the demo keeps playing instead of seeking because a seek (+ the pause to hide the seek tint effect) takes longer.
+const MAX_SECONDS_TO_PLAY_INSTEAD_OF_SEEKING = 3;
+
+function getSetupSequenceTick(sequence: Sequence, tickrate: number) {
+  return Math.max(1, sequence.startTick - Math.round(tickrate));
+}
+
+/**
+ * How to reach a sequence from the previous one:
+ * - restart: go back to the beginning of the demo and seek to the sequence (default behavior, works in every case).
+ * - seek: seek forward to the sequence without going back to the beginning of the demo.
+ * - play: the sequence starts right after the previous one, the demo keeps playing until the sequence starts.
+ */
+type Transition = 'restart' | 'seek' | 'play';
+
+export function getSequenceTransition(
+  previous: Sequence | undefined,
+  next: Sequence,
+  tickrate: number,
+  fastSeek: boolean,
+): Transition {
+  if (!previous || !fastSeek) {
+    return 'restart';
+  }
+
+  const previousEndTick = previous.endTick + SEQUENCE_END_MARGIN_TICKS;
+  const nextSetupTick = getSetupSequenceTick(next, tickrate);
+  // We must be sure that the setup commands of the next sequence are executed after the end of the previous one,
+  // it's not the case when sequences overlap, the only way is to restart the playback.
+  if (nextSetupTick - 1 <= previousEndTick) {
+    return 'restart';
+  }
+
+  const ticksBetweenSequences = nextSetupTick - previousEndTick;
+  if (ticksBetweenSequences <= Math.round(tickrate) * MAX_SECONDS_TO_PLAY_INSTEAD_OF_SEEKING) {
+    return 'play';
+  }
+
+  return 'seek';
 }
 
 type Options = {
@@ -36,9 +82,11 @@ type Options = {
     videoCodec: string;
     outputParameters: string;
   };
+  // CS2 only. When enabled, the playback doesn't restart from the beginning of the demo between sequences if possible.
+  fastSeek?: boolean;
 };
 
-export async function createCs2VideoJsonFile({
+export function buildCs2VideoJsonActions({
   type,
   recordingSystem,
   recordingOutput,
@@ -53,6 +101,7 @@ export async function createCs2VideoJsonFile({
   players,
   cameras,
   ffmpegSettings,
+  fastSeek = false,
 }: Options) {
   const json = new JSONActionsFileGenerator(demoPath, Game.CS2);
 
@@ -67,27 +116,34 @@ export async function createCs2VideoJsonFile({
     'r_show_build_info 0',
     'mirv_streams record screen enabled 1',
     `cl_demo_predict ${trueView ? 1 : 0}`,
+    // Keep the game running at full speed and keep its audio when the window loses the focus, users can do something
+    // else during the recording. Values are saved in the CS:DM config folder, not the user's config.
+    'engine_no_focus_sleep 0',
+    'snd_mute_losefocus 0',
   ];
 
   for (let i = 0; i < sequences.length; i++) {
     const sequence = sequences[i];
+    const roundedTickrate = Math.round(tickrate);
+    const setupSequenceTick = getSetupSequenceTick(sequence, tickrate);
+    const transition = getSequenceTransition(sequences[i - 1], sequence, tickrate, fastSeek);
+    // When the playback restarts, the first commands are executed at the beginning of the demo, otherwise the demo
+    // is already at the right position and they are executed with the other setup commands.
+    const firstCommandsTick = transition === 'restart' ? 1 : setupSequenceTick;
 
     for (const command of mandatoryCommands) {
-      json.addExecCommand(1, command);
+      json.addExecCommand(firstCommandsTick, command);
     }
 
-    json.addExecCommand(1, `cl_draw_only_deathnotices ${sequence.showOnlyDeathNotices ? 1 : 0}`);
-    json.addExecCommand(1, `mirv_deathmsg lifetime ${sequence.deathNoticesDuration}`);
-    json.addExecCommand(1, `mirv_deathmsg filter clear`);
+    json.addExecCommand(firstCommandsTick, `cl_draw_only_deathnotices ${sequence.showOnlyDeathNotices ? 1 : 0}`);
+    json.addExecCommand(firstCommandsTick, `mirv_deathmsg lifetime ${sequence.deathNoticesDuration}`);
+    json.addExecCommand(firstCommandsTick, `mirv_deathmsg filter clear`);
 
     if (sequence.playerVoicesEnabled) {
-      json.enablePlayerVoices(1);
+      json.enablePlayerVoices(firstCommandsTick);
     } else {
-      json.disablePlayerVoices(1);
+      json.disablePlayerVoices(firstCommandsTick);
     }
-
-    const roundedTickrate = Math.round(tickrate);
-    const setupSequenceTick = Math.max(1, sequence.startTick - roundedTickrate);
 
     const hlaeOutputFolderPath = getHlaeOutputFolderPath(outputFolderPath, sequence);
     const presetName =
@@ -103,7 +159,11 @@ export async function createCs2VideoJsonFile({
       .addExecCommand(setupSequenceTick, `mp_display_kill_assists ${sequence.showAssists ? 1 : 0}`);
 
     if (presetName !== 'afxClassic') {
-      let presetParameters = `-c:v ${ffmpegSettings.videoCodec} -pix_fmt yuv420p`;
+      let presetParameters = `-c:v ${ffmpegSettings.videoCodec}`;
+      // Let users choose the pixel format, e.g. a 10-bit one for AV1/HEVC.
+      if (!hasPixelFormatParameter(ffmpegSettings.outputParameters)) {
+        presetParameters += ' -pix_fmt yuv420p';
+      }
       if (ffmpegSettings.outputParameters === '') {
         presetParameters += ` -crf ${ffmpegSettings.constantRateFactor}`;
       } else {
@@ -134,25 +194,34 @@ export async function createCs2VideoJsonFile({
     // Do it a few ticks before the sequence's start tick because some ticks may be skipped between the time that the
     // plugin pauses the playback and the time that the game actually pauses the playback (it would result in
     // startmovie commands not being executed and so missing sequences).
-    json.addPausePlayback(Math.max(1, sequence.startTick - 4));
+    // Not needed when the demo kept playing since the previous sequence, there is no seek effect to hide.
+    if (transition !== 'play') {
+      json.addPausePlayback(Math.max(1, sequence.startTick - 4));
+    }
 
     // Go to 1 tick before the sequence's setup tick to make sure the setup commands are executed.
     // It may not if we do both the skip ahead and the setup cmds at the same tick.
     // Since an October 2025 CS2 update, executing spec_player and demo_gototick on the same tick may cause
     // spec_player to be ignored. It's important to go to the setup tick before executing any spec_player command.
     // https://github.com/akiver/cs-demo-manager/issues/1238
-    json.addGoToTick(1, Math.max(1, setupSequenceTick - 1));
+    // When the transition is a seek or play, the previous sequence already moved the playback to this position.
+    if (transition === 'restart') {
+      json.addGoToTick(1, Math.max(1, setupSequenceTick - 1));
+    }
 
+    // Camera commands must not be executed before the setup tick when chaining sequences, they would be executed
+    // while the previous sequence is still being recorded.
+    const minCameraTick = transition === 'restart' ? 1 : setupSequenceTick;
     for (const camera of sequence.playerCameras) {
       const player = players.find((player) => player.steamId === camera.playerSteamId);
       if (player) {
-        json.addSpecPlayer(camera.tick, player.slot);
+        json.addSpecPlayer(Math.max(minCameraTick, camera.tick), player.slot);
       }
     }
     for (const { id, tick } of sequence.cameras) {
       const camera = cameras.find((camera) => id === camera.id);
       if (camera) {
-        json.addFocusCamera(tick, camera);
+        json.addFocusCamera(Math.max(minCameraTick, tick), camera);
       }
     }
 
@@ -204,12 +273,23 @@ export async function createCs2VideoJsonFile({
       }
     }
 
-    if (closeGameAfterRecording && i === sequences.length - 1) {
-      json.addExecCommand(lastArrayItem(sequences).endTick + 64, 'quit');
-    } else {
-      json.addGoToNextSequence(sequence.endTick + 64);
+    const nextSequence = sequences.at(i + 1);
+    const nextTransition = nextSequence ? getSequenceTransition(sequence, nextSequence, tickrate, fastSeek) : undefined;
+    const sequenceEndTick = sequence.endTick + SEQUENCE_END_MARGIN_TICKS;
+
+    if (nextSequence === undefined && closeGameAfterRecording) {
+      json.addExecCommand(sequenceEndTick, 'quit');
+    } else if (nextSequence !== undefined && nextTransition === 'seek') {
+      json.addGoToTick(sequenceEndTick, getSetupSequenceTick(nextSequence, roundedTickrate) - 1);
+    } else if (nextTransition !== 'play') {
+      json.addGoToNextSequence(sequenceEndTick);
     }
   }
 
+  return json;
+}
+
+export async function createCs2VideoJsonFile(options: Options) {
+  const json = buildCs2VideoJsonActions(options);
   await json.write();
 }

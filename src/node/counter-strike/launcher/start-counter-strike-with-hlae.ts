@@ -16,7 +16,6 @@ import { getRunningProcessExitCode } from 'csdm/node/os/get-running-process-exit
 import { sleep } from 'csdm/common/sleep';
 import { GameError } from './errors/game-error';
 import { installCounterStrikeServerPlugin, uninstallCounterStrikeServerPlugin } from './cs-server-plugin';
-import { getFfmpegExecutablePath } from 'csdm/node/video/ffmpeg/ffmpeg-location';
 import { FfmpegNotInstalled } from 'csdm/node/video/errors/ffmpeg-not-installed';
 import { DisplayMode } from 'csdm/common/types/display-mode';
 import { enableFullscreenWindowed } from './video-config-file';
@@ -33,14 +32,14 @@ export type HlaeOptions = {
   signal?: AbortSignal;
   onGameStart?: () => void;
   uninstallPluginOnExit?: boolean;
-  registerFfmpegLocation?: boolean; // Should we write the ffmpeg.ini file that indicates the location of the FFmpeg executable?
+  // When defined, the ffmpeg.ini file that indicates the location of the FFmpeg executable to HLAE is written.
+  ffmpegExecutablePath?: string;
 };
 
 // Creates the ffmpeg.ini file that indicates the location of the FFmpeg executable.
 // The file must be inside the ffmpeg folder next to the HLAE executable. Example:
 // C:/Users/username/hlae/ffmpeg/ffmpeg.ini
-async function registerFfmpegLocation(hlaeExecutablePath: string) {
-  const ffmpegExecutablePath = await getFfmpegExecutablePath();
+async function registerFfmpegLocation(hlaeExecutablePath: string, ffmpegExecutablePath: string) {
   if (!(await fs.pathExists(ffmpegExecutablePath))) {
     throw new FfmpegNotInstalled();
   }
@@ -220,8 +219,8 @@ export async function startCounterStrikeWithHlae(options: HlaeOptions) {
   }
   await installCounterStrikeServerPlugin(game);
 
-  if (options.registerFfmpegLocation) {
-    await registerFfmpegLocation(hlaeExecutablePath);
+  if (options.ffmpegExecutablePath) {
+    await registerFfmpegLocation(hlaeExecutablePath, options.ffmpegExecutablePath);
   }
 
   const parameters = options.hlaeParameters ?? userHlaeParameters;

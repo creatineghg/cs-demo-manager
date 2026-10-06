@@ -27,10 +27,11 @@ import { RecordingSystem } from 'csdm/common/types/recording-system';
 import { RecordingOutput } from 'csdm/common/types/recording-output';
 import { moveHlaeRawFilesToOutputFolder } from './move-hlae-files-to-output-folder';
 import { fetchCameras } from 'csdm/node/database/cameras/fetch-cameras';
-import { getFfmpegExecutablePath } from '../ffmpeg/ffmpeg-location';
-import { isBlankString } from 'csdm/common/string/is-empty-string';
+import { getFfmpegExecutablePathFromSettings } from '../ffmpeg/ffmpeg-location';
 import { DisplayMode } from 'csdm/common/types/display-mode';
 import { replaceFilenamePlaceholders } from './replace-filename-placeholders';
+import { RecordingWindowMode } from 'csdm/common/types/recording-window-mode';
+import { keepGameWindowInBackground } from 'csdm/node/counter-strike/launcher/keep-game-window-in-background';
 
 export type Parameters = {
   videoId: string;
@@ -48,7 +49,10 @@ export type Parameters = {
   concatenateSequences: boolean;
   outputFileName: string;
   trueView: boolean;
-  ffmpegSettings: Omit<FfmpegSettings, 'customLocationEnabled'>;
+  // Optional because videos may have been added to the queue by an older CLI/UI version.
+  fastSeek?: boolean;
+  windowMode?: RecordingWindowMode;
+  ffmpegSettings: FfmpegSettings;
   outputFolderPath: string;
   demoPath: string;
   sequences: Sequence[];
@@ -77,14 +81,13 @@ async function buildVideos({ signal, ...options }: Parameters) {
     onConcatenateSequencesStart,
   } = options;
 
+  const ffmpegExecutablePath = getFfmpegExecutablePathFromSettings(ffmpegSettings);
   for (const [index, sequence] of sequences.entries()) {
     onSequenceStart(sequence.number, index + 1);
     if (encoderSoftware === EncoderSoftware.FFmpeg) {
       await generateVideoWithFFmpeg(
         {
-          ffmpegExecutablePath: !isBlankString(ffmpegSettings.customExecutableLocation)
-            ? ffmpegSettings.customExecutableLocation
-            : await getFfmpegExecutablePath(),
+          ffmpegExecutablePath,
           recordingSystem,
           recordingOutput,
           game,
@@ -131,9 +134,7 @@ async function buildVideos({ signal, ...options }: Parameters) {
     });
     await concatenateVideosFromSequences(
       {
-        ffmpegExecutablePath: !isBlankString(ffmpegSettings.customExecutableLocation)
-          ? ffmpegSettings.customExecutableLocation
-          : await getFfmpegExecutablePath(),
+        ffmpegExecutablePath,
         outputFolderPath,
         sequences,
         videoContainer: ffmpegSettings.videoContainer,
@@ -229,12 +230,14 @@ export async function generateVideo(parameters: Parameters) {
       cameras,
       ffmpegSettings,
       trueView,
+      fastSeek: parameters.fastSeek ?? false,
     });
   }
 
   throwIfAborted(signal);
 
   const shouldGenerateVideo = recordingOutput !== RecordingOutput.Images;
+  const gameWindowKeeper = keepGameWindowInBackground(game, parameters.windowMode ?? RecordingWindowMode.Normal);
   try {
     if (recordingSystem === RecordingSystem.HLAE) {
       await watchDemoWithHlae({
@@ -245,7 +248,8 @@ export async function generateVideo(parameters: Parameters) {
         displayMode: DisplayMode.Windowed,
         signal,
         uninstallPluginOnExit: false,
-        registerFfmpegLocation: shouldGenerateVideo,
+        // HLAE must use the same FFmpeg executable as the one used to convert/concatenate sequences.
+        ffmpegExecutablePath: shouldGenerateVideo ? getFfmpegExecutablePathFromSettings(ffmpegSettings) : undefined,
         onGameStart: parameters.onGameStart,
       });
     } else {
@@ -257,9 +261,11 @@ export async function generateVideo(parameters: Parameters) {
         height,
         signal,
         uninstallPluginOnExit: false,
+        reuseRunningGame: false,
         onGameStart: parameters.onGameStart,
       });
     }
+    gameWindowKeeper.stop();
 
     throwIfAborted(signal);
 
@@ -299,6 +305,7 @@ export async function generateVideo(parameters: Parameters) {
     await cleanupFiles();
     throw error;
   } finally {
+    gameWindowKeeper.stop();
     await uninstallCounterStrikeServerPlugin(game);
   }
 }

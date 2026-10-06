@@ -41,6 +41,9 @@ export type StartCounterStrikeOptions = {
   signal?: AbortSignal;
   onGameStart?: () => void;
   mode?: 'playback' | 'spectate'; // 'spectate' starts CS on the given map with the player in free-roam spectator mode.
+  // When true (default) and the game is already running, the demo is started in the running game.
+  // Video recordings must wait for the game process to exit, they need a new game process.
+  reuseRunningGame?: boolean;
 };
 
 function buildUnixCommand(scriptPath: string, args: string, game: Game) {
@@ -136,11 +139,13 @@ export async function startCounterStrike(options: StartCounterStrikeOptions) {
   if (demoPath) {
     assertDemoPathIsValid(demoPath, game);
 
-    try {
-      await tryStartingDemoThroughWebSocket(demoPath);
-      return;
-    } catch {
-      // It failed, start CS normally
+    if (options.reuseRunningGame !== false) {
+      try {
+        await tryStartingDemoThroughWebSocket(demoPath);
+        return;
+      } catch {
+        // It failed, start CS normally
+      }
     }
   }
 

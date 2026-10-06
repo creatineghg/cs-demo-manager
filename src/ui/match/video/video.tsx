@@ -24,6 +24,9 @@ import { DocumentationLink } from 'csdm/ui/components/links/documentation-link';
 import { WatchSequencesButton } from './watch-sequences-button';
 import { VideoActionsMenu } from './video-actions-menu';
 import { ToggleTrueView } from './toggle-true-view';
+import { FastSeekCheckbox } from './fast-seek-checkbox';
+import { RecordingWindowModeSelect } from './recording-window-mode-select';
+import { ResolutionPresetSelect } from './resolution-preset-select';
 import { useCurrentMatch } from '../use-current-match';
 import { Game } from 'csdm/common/types/counter-strike';
 
@@ -52,8 +55,10 @@ export function MatchVideo() {
                 {window.csdm.isWindows && <RecordingSystemSelect />}
                 <RecordingOutputSelect />
                 <EncoderSoftwareSelect />
+                {window.csdm.isWindows && <RecordingWindowModeSelect />}
               </div>
               <div className="flex flex-col gap-y-8">
+                <ResolutionPresetSelect />
                 <WidthResolutionInput />
                 <HeightResolutionInput />
                 <FramerateInput />
@@ -64,6 +69,7 @@ export function MatchVideo() {
               <OutputFolderPath />
               <div>
                 {match.game !== Game.CSGO && <ToggleTrueView />}
+                {match.game !== Game.CSGO && <FastSeekCheckbox />}
                 <CloseGameAfterRecordingCheckbox />
                 <ConcatenateSequencesCheckbox />
                 <OutputFileNameInput />

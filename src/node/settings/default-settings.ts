@@ -9,6 +9,7 @@ import { RecordingSystem } from 'csdm/common/types/recording-system';
 import { RecordingOutput } from 'csdm/common/types/recording-output';
 import { DisplayMode } from 'csdm/common/types/display-mode';
 import { DatabaseMode } from 'csdm/common/types/database-mode';
+import { RecordingWindowMode } from 'csdm/common/types/recording-window-mode';
 
 export const defaultSettings: Settings = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -90,6 +91,8 @@ export const defaultSettings: Settings = {
     playerVoicesEnabled: true,
     recordAudio: true,
     trueView: false,
+    fastSeek: true,
+    windowMode: RecordingWindowMode.Background,
     encoderSoftware: EncoderSoftware.FFmpeg,
     ffmpegSettings: {
       audioBitrate: 256,

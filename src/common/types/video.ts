@@ -6,6 +6,7 @@ import type { VideoStatus } from './video-status';
 import type { ErrorCode } from '../error-code';
 import type { RecordingOutput } from './recording-output';
 import type { RecordingSystem } from './recording-system';
+import type { RecordingWindowMode } from './recording-window-mode';
 
 export type Video = {
   id: string;
@@ -30,6 +31,10 @@ export type Video = {
   output: string;
   status: VideoStatus;
   trueView: boolean;
+  // CS2 only, optional because videos may be added by older CLI versions.
+  fastSeek?: boolean;
+  // @platform win32
+  windowMode?: RecordingWindowMode;
   errorCode?: ErrorCode;
   currentSequence?: number;
   currentSequencePosition?: number;
