@@ -7,6 +7,37 @@ files. It parses demos and stores data in a database. Features include match/pla
 a 2D round viewer, heatmaps, video generation, demo downloads from Valve and third-party services, XLSX/JSON export,
 ban tracking, voice audio extraction and more.
 
+## Quick orientation
+
+- Users: desktop app (Electron) or the `csdm` CLI. Both talk to the same background daemon (`src/server`) over a local
+  WebSocket, the daemon owns the database (bundled PostgreSQL started on demand, or an external one) and the video and
+  analysis queues.
+- Demo analysis: `@akiver/cs-demo-analyzer` (Go binary) parses `.dem` files, results are inserted with Kysely
+  (`src/node/database`).
+- Video recording: the game is started with a CS:DM server plugin (`cs2-server-plugin/`, prebuilt binaries in
+  `static/`) that executes console commands at given ticks from a JSON file written next to the demo
+  (`<demo>.dem.json`). See "Video pipeline" below.
+- Scripts and AI agents should use the CLI with `--json`, see [docs/automation.md](docs/automation.md) for the full
+  pipeline (doctor, matches, highlights, video with encoding presets, background recording, multi-demo merge).
+
+## Video pipeline
+
+- Entry point: `src/node/video/generation/generate-video.ts`, called by the video queue (`src/server/video-queue.ts`).
+- CS2 actions file: `src/node/video/generation/create-cs2-video-json-file.ts` builds the tick/command list read by
+  the plugin. Internal plugin commands: `pause_playback` (2s pause to hide the seek tint), `go_to_next_sequence`
+  (restarts the demo at tick 0 and loads the next action list). Fast seek chains sequences in a single action list
+  (forward `demo_gototick` or keep playing) when they don't overlap. `echo CSDM_SEQUENCE_START <n>` markers are read
+  from the plugin log (`csdm.log` next to the game executable) to report the sequence being recorded.
+- Recording systems: HLAE (Windows, `mirv_streams` + FFmpeg pipe, no raw images on disk) or the game `startmovie`
+  command (TGA images + WAV converted by FFmpeg afterwards).
+- Encoding presets: `src/node/video/ffmpeg/ffmpeg-presets.ts` (AV1/HEVC/H.264/ProRes), detection of the presets that
+  work on the machine: `detect-ffmpeg-presets.ts`. Preset parameters are embedded in HLAE console commands, they must
+  not contain double quotes or semicolons.
+- Windows game window handling while recording: `src/node/counter-strike/launcher/keep-game-window-in-background.ts`
+  (PowerShell + user32).
+- The C++ plugins can't be rebuilt locally without the Windows toolchain: the binaries are built by the
+  `build_cs_plugins.yml` workflow. Prefer TS-side changes (JSON actions) over plugin changes.
+
 ## Stack
 
 > **Important**: This project uses **Vite+** (`vp`). Always use `vp` instead of `pnpm` to manage dependencies and run scripts. The `vp` CLI must be installed, see the [Vite+ documentation](https://viteplus.dev/guide/).
@@ -44,6 +75,8 @@ Code quality:
 - `vp test src/path/to/file.test.ts` — run tests in a specific file.
 - `vp run test:watch` — run tests in watch mode.
 - `vp run deadcode` — find dead code.
+
+CLI quick check (after `vp run dev:cli` built `out/cli.js`): `node out/cli.js help`, `node out/cli.js doctor --json`.
 
 ## Validation workflow
 
@@ -111,11 +144,20 @@ src/
 
 Use the `logger` global (a custom `ILogger` instance that writes to a log file) instead of `console`. `no-console` is enforced in all code except `src/cli/`. `logger` is injected at build time and available in all files without import.
 
+### Settings
+
+User settings are a JSON file (`src/node/settings`). When adding or changing a setting, update `settings.ts`,
+`default-settings.ts`, bump `CURRENT_SCHEMA_VERSION` in `schema-version.ts` and add a migration in
+`src/node/settings/migrations` registered in `get-all-migrations.ts`. Optional fields can skip the migration.
+
 ### Testing
 
 Only unit tests exist today — integration and E2E tests may be added later. Tests are colocated next to source files as `*.test.ts`. Import `describe` and `it` from `vite-plus/test`, not directly from `vitest`.
 
 ### i18n
+
+The `lingui/no-unlocalized-strings` lint rule applies to `src/ui` and `src/common` (not `src/node`, `src/server`,
+`src/cli`, tests), keep user-facing strings in the UI and pure data/constants with sentences in `src/node`.
 
 The app is localized with **LinguiJS**. Source strings are written in English and extracted with `vp run i18n:extract` into per-locale catalogs (`src/ui/translations/{locale}/messages.po` for the renderer, `src/electron-main/translations/{locale}/*.json` for the main process).
 
