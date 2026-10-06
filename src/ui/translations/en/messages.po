@@ -7928,6 +7928,20 @@ msgctxt "Settings title"
 msgid "Launch parameters"
 msgstr "Launch parameters"
 
+#: src/ui/settings/playback/linux-launch-command-prefix.tsx
+msgctxt "Input placeholder"
+msgid "Command prefix"
+msgstr "Command prefix"
+
+#: src/ui/settings/playback/linux-launch-command-prefix.tsx
+msgid "Command added before the game command, e.g. <0>gamescope --backend headless -W 3840 -H 2160 --</0> to record videos without a visible game window."
+msgstr "Command added before the game command, e.g. <0>gamescope --backend headless -W 3840 -H 2160 --</0> to record videos without a visible game window."
+
+#: src/ui/settings/playback/linux-launch-command-prefix.tsx
+msgctxt "Settings title"
+msgid "Launch command prefix"
+msgstr "Launch command prefix"
+
 #: src/ui/settings/playback/lowlights-include-damages.tsx
 msgid "Include health damages above 40HP that did not result into a player's death in lowlights"
 msgstr "Include health damages above 40HP that did not result into a player's death in lowlights"

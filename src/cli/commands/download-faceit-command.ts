@@ -112,7 +112,7 @@ export class DownloadFaceitCommand extends DownloadBaseCommand {
     const demoPath = path.join(this.outputFolderPath, `${match.id}.dem`);
     const demoAlreadyExists = await fs.pathExists(demoPath);
     if (demoAlreadyExists) {
-      console.log('Demo already in the download folder.');
+      console.log(`Demo already exists at ${demoPath}`);
       return;
     }
 
@@ -134,6 +134,7 @@ export class DownloadFaceitCommand extends DownloadBaseCommand {
     const transformStream = zlib.createGunzip();
     await streamPipeline(response.body, transformStream, out);
     this.demoPathBeingDownloaded = undefined;
+    console.log(`Demo downloaded at ${demoPath}`);
   }
 
   private async getAccountId() {

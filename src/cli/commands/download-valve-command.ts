@@ -175,6 +175,7 @@ export class DownloadValveCommand extends DownloadBaseCommand {
     await streamPipeline(response.body, b2(), out);
     await fs.writeFile(`${demoPath}.info`, toBinary(CDataGCCStrike15_v2_MatchInfoSchema, matchInfo));
     this.demoPathBeingDownloaded = undefined;
+    console.log(`Demo downloaded at ${demoPath}`);
   }
 
   private async fetchMatches(args?: string[]) {

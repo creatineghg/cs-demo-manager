@@ -94,6 +94,8 @@ export type PlaybackSettings = {
   // @platform Linux Path to the Steam runtime script used to launch CS2. If empty or the option is disabled, the script will be searched in the default Steam installation folder.
   cs2SteamRuntimeScriptPath: string;
   customCs2SteamRuntimeScriptLocationEnabled: boolean;
+  // @platform Linux Command added before the command that starts the game, e.g. "gamescope --backend headless --".
+  linuxLaunchCommandPrefix?: string;
 };
 
 export type PlayerProfileSettings = {

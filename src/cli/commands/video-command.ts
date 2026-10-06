@@ -498,7 +498,7 @@ export class VideoCommand extends Command {
         concatenateSequences: config.concatenateSequences ?? parameters.concatenateSequences,
         outputFileName: config.outputFileName ?? parameters.outputFileName,
         ffmpegSettings: config.ffmpegSettings ?? parameters.ffmpegSettings,
-        outputFolderPath: config.outputFolderPath ?? parameters.outputFolderPath,
+        outputFolderPath: config.outputFolderPath ? path.resolve(config.outputFolderPath) : parameters.outputFolderPath,
         sequences: config.sequences ?? parameters.sequences,
       };
       if (config.ffmpegSettings === undefined) {
@@ -1182,7 +1182,8 @@ export class VideoCommand extends Command {
         if (!stats.isDirectory()) {
           throw new InvalidArgument('Output folder is not a directory');
         }
-        this.outputFolderPath = outputFolderPath;
+        // The daemon has its own working directory, it must receive absolute paths.
+        this.outputFolderPath = path.resolve(outputFolderPath);
       } catch (error) {
         if (error instanceof InvalidArgument) {
           throw error;
@@ -1276,7 +1277,7 @@ export class VideoCommand extends Command {
       if (!ffmpegExecutableExists) {
         throw new InvalidArgument('FFmpeg executable path does not exist');
       }
-      this.ffmpegExecutablePath = ffmpegExecutablePath;
+      this.ffmpegExecutablePath = path.resolve(ffmpegExecutablePath);
     }
     if (values[this.ffmpegCrfFlag] !== undefined) {
       const ffmpegCrf = Number(values[this.ffmpegCrfFlag]);

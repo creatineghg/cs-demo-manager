@@ -54,7 +54,8 @@ export async function getHlaeTakeFolderPath(sequenceOutputFolderPath: string) {
   });
   assertPathsNotEmpty(takeFolders);
 
-  const takeFolderPath = lastArrayItem(takeFolders);
+  // The glob order depends on the filesystem, sort folders to get the most recent take (take0000, take0001...).
+  const takeFolderPath = lastArrayItem(takeFolders.toSorted());
   await assertFolderExists(takeFolderPath);
 
   return takeFolderPath;

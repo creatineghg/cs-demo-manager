@@ -128,6 +128,7 @@ export class Download5EPlayCommand extends DownloadBaseCommand {
     const transformStream = unzipper.ParseOne();
     await streamPipeline(response.body, transformStream, out);
     this.demoPathBeingDownloaded = undefined;
+    console.log(`Demo downloaded at ${demoPath}`);
   }
 
   private async getAccountId() {

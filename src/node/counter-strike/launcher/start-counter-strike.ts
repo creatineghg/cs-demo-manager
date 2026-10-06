@@ -101,10 +101,16 @@ async function buildLinuxCommand(scriptPath: string, args: string, game: Game, s
     throw new CounterStrikeExecutableNotFound(game);
   }
 
-  const command =
+  let command =
     game === Game.CS2
       ? `"${runSteamScriptPath}" --verb=waitforexitandrun -- "${scriptPath}"`
       : `"${runSteamScriptPath}" "${scriptPath}"`;
+
+  // Lets users wrap the game, e.g. with gamescope to render the game in a headless/nested window.
+  const commandPrefix = settings.linuxLaunchCommandPrefix?.trim();
+  if (commandPrefix) {
+    command = `${commandPrefix} ${command}`;
+  }
 
   return buildUnixCommand(command, args, game);
 }

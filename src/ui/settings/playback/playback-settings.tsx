@@ -1,6 +1,7 @@
 import React from 'react';
 import { SettingsView } from 'csdm/ui/settings/settings-view';
 import { LaunchParameters } from './launch-parameters';
+import { LinuxLaunchCommandPrefix } from './linux-launch-command-prefix';
 import { CustomHighlights } from './custom-highlights';
 import { GameDisplayMode } from './game-display-mode';
 import { GameHeight } from './game-height';
@@ -50,6 +51,7 @@ export function PlaybackSettings() {
             <>
               <FollowSymbolicLinks />
               <SteamRuntimeScriptLocation />
+              <LinuxLaunchCommandPrefix />
             </>
           )}
           <Cs2Location />

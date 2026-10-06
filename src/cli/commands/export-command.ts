@@ -121,7 +121,8 @@ export abstract class ExportCommand extends Command {
             });
             this.demoPaths.push(...files);
           } else if (stats.isFile() && arg.endsWith('.dem')) {
-            this.demoPaths.push(arg);
+            // The daemon has its own working directory, it must receive absolute paths.
+            this.demoPaths.push(path.resolve(arg));
           } else {
             console.log(`Invalid path: ${arg}`);
             this.exitWithFailure();

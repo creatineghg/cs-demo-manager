@@ -130,6 +130,7 @@ export class DownloadRenownCommand extends DownloadBaseCommand {
     const transformStream = zlib.createGunzip();
     await streamPipeline(response.body, transformStream, out);
     this.demoPathBeingDownloaded = undefined;
+    console.log(`Demo downloaded at ${demoPath}`);
   }
 
   private async getAccountSteamId() {
