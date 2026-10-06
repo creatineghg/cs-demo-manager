@@ -5399,6 +5399,11 @@ msgid "Off-screen"
 msgstr "Off-screen"
 
 #: src/ui/match/video/recording-window-mode-select.tsx
+msgctxt "Select option game window mode"
+msgid "Hidden (experimental)"
+msgstr "Hidden (experimental)"
+
+#: src/ui/match/video/recording-window-mode-select.tsx
 msgctxt "Select label"
 msgid "Game window"
 msgstr "Game window"

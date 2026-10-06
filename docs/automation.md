@@ -103,8 +103,10 @@ Quality and encoding:
 
 Recording behavior:
 
-- `--window-mode normal|background|off-screen` (Windows): `background` (default) keeps the game window behind the
-  other windows and gives the focus back to the previous window, `off-screen` also moves it outside of the screens.
+- `--window-mode normal|background|off-screen|hidden` (Windows): `background` (default) keeps the game window behind the
+  other windows and gives the focus back to the previous window, `off-screen` also moves it outside of the screens,
+  `hidden` (experimental) hides the window completely, some drivers stop rendering hidden windows: use `off-screen` if
+  the recording stalls.
   The game keeps rendering at full speed and keeps its audio while unfocused.
 - `--fast-seek` / `--no-fast-seek` (CS2, enabled by default): the demo is not restarted from the beginning between
   sequences. Short gaps are played, long gaps are skipped with a forward seek, overlapping sequences still restart the

@@ -31,6 +31,13 @@ export function RecordingWindowModeSelect() {
         message: 'Off-screen',
       }),
     },
+    {
+      value: RecordingWindowMode.Hidden,
+      label: t({
+        context: 'Select option game window mode',
+        message: 'Hidden (experimental)',
+      }),
+    },
   ];
 
   return (

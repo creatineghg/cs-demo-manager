@@ -6,6 +6,8 @@ export const RecordingWindowMode = {
   Background: 'background',
   // @platform win32 Same as background but the game window is also moved outside of the screens.
   OffScreen: 'off-screen',
+  // @platform win32 Experimental, the game window is hidden. The game may stop rendering frames with some drivers.
+  Hidden: 'hidden',
 } as const;
 
 export type RecordingWindowMode = (typeof RecordingWindowMode)[keyof typeof RecordingWindowMode];

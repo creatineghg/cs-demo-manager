@@ -13,7 +13,7 @@ const GAME_START_TIMEOUT_SECONDS = 300;
 // kills a previous instance.
 const GAME_EXIT_GRACE_SECONDS = 30;
 
-function buildScript(processName: string, offScreen: boolean) {
+function buildScript(processName: string, mode: RecordingWindowMode) {
   return `
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -TypeDefinition @'
@@ -28,13 +28,16 @@ public static class CsdmWindow {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 }
 '@
 $processName = '${processName}'
-$offScreen = $${offScreen ? 'true' : 'false'}
+$offScreen = $${mode === RecordingWindowMode.OffScreen ? 'true' : 'false'}
+$hidden = $${mode === RecordingWindowMode.Hidden ? 'true' : 'false'}
 $HWND_BOTTOM = [IntPtr]1
 $SWP_NOSIZE = 0x0001
 $SWP_NOMOVE = 0x0002
@@ -81,7 +84,10 @@ while ($true) {
   $isFocusGuardActive = (Get-Date) -lt $focusGuardDeadline
   $gameWindow = $gameProcess.MainWindowHandle
 
-  if ($offScreen) {
+  if ($hidden) {
+    # SW_HIDE, the game may show its window again when it changes the resolution.
+    if ([CsdmWindow]::IsWindowVisible($gameWindow)) { [void][CsdmWindow]::ShowWindow($gameWindow, 0) }
+  } elseif ($offScreen) {
     # Keep the window outside of the screens for the whole recording, the game may move it when it changes the
     # resolution.
     $rect = New-Object CsdmWindow+RECT
@@ -121,7 +127,7 @@ export function keepGameWindowInBackground(game: Game, mode: RecordingWindowMode
   }
 
   const processName = game === Game.CSGO ? 'csgo' : 'cs2';
-  const script = buildScript(processName, mode === RecordingWindowMode.OffScreen);
+  const script = buildScript(processName, mode);
   const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
 
   let child: ChildProcess | undefined;
