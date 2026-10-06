@@ -9,6 +9,9 @@ import { isWindows } from 'csdm/node/os/is-windows';
 const FOCUS_GUARD_SECONDS = 90;
 // How long the script waits for the game window to appear before giving up.
 const GAME_START_TIMEOUT_SECONDS = 300;
+// How long the script waits for the game to be restarted before exiting, the game may be restarted when the launcher
+// kills a previous instance.
+const GAME_EXIT_GRACE_SECONDS = 30;
 
 function buildScript(processName: string, offScreen: boolean) {
   return `
@@ -40,6 +43,7 @@ $SM_XVIRTUALSCREEN = 76
 $previousWindow = [CsdmWindow]::GetForegroundWindow()
 $startDeadline = (Get-Date).AddSeconds(${GAME_START_TIMEOUT_SECONDS})
 $focusGuardDeadline = $null
+$exitDeadline = $null
 
 function Restore-PreviousWindowFocus($gameWindow) {
   if ($previousWindow -eq [IntPtr]::Zero -or -not [CsdmWindow]::IsWindow($previousWindow)) { return }
@@ -58,11 +62,18 @@ function Restore-PreviousWindowFocus($gameWindow) {
 while ($true) {
   $gameProcess = Get-Process -Name $processName | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1
   if ($null -eq $gameProcess) {
-    if ($null -ne $focusGuardDeadline) { break } # the game exited
-    if ((Get-Date) -gt $startDeadline) { break }
+    if ($null -ne $focusGuardDeadline) {
+      # The game exited, wait a bit in case it's restarted and handle the new window.
+      if ($null -eq $exitDeadline) { $exitDeadline = (Get-Date).AddSeconds(${GAME_EXIT_GRACE_SECONDS}) }
+      if ((Get-Date) -gt $exitDeadline) { break }
+      $focusGuardDeadline = (Get-Date).AddSeconds(${FOCUS_GUARD_SECONDS})
+    } elseif ((Get-Date) -gt $startDeadline) {
+      break
+    }
     Start-Sleep -Milliseconds 250
     continue
   }
+  $exitDeadline = $null
 
   if ($null -eq $focusGuardDeadline) {
     $focusGuardDeadline = (Get-Date).AddSeconds(${FOCUS_GUARD_SECONDS})

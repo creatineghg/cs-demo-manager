@@ -240,6 +240,12 @@ export async function generateVideo(parameters: Parameters) {
   throwIfAborted(signal);
 
   const shouldGenerateVideo = recordingOutput !== RecordingOutput.Images;
+  // Close a running game before watching the game window and the plugin log file, they must target the new instance.
+  const hasKilledGame = await killCounterStrikeProcesses();
+  if (hasKilledGame) {
+    // The game may still lock files for a moment after being killed.
+    await sleep(2000);
+  }
   const gameWindowKeeper = keepGameWindowInBackground(game, parameters.windowMode ?? RecordingWindowMode.Normal);
   const recordingProgressWatcher = await watchRecordingProgress(game, (sequenceNumber) => {
     const position = sequences.findIndex((sequence) => sequence.number === sequenceNumber) + 1;
