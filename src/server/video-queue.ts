@@ -142,7 +142,11 @@ class VideoQueue {
 
   private readonly processVideo = async (video: Video) => {
     try {
-      this.updateCurrentVideoAndNotifyRendererProcess({ status: VideoStatus.Recording });
+      this.updateCurrentVideoAndNotifyRendererProcess({
+        status: VideoStatus.Recording,
+        currentSequence: undefined,
+        currentSequencePosition: undefined,
+      });
       const ctrl = new AbortController();
       this.abortControllers[video.id] = ctrl;
 
@@ -152,6 +156,13 @@ class VideoQueue {
         signal: ctrl.signal,
         onGameStart: () => {
           this.updateCurrentVideoAndNotifyRendererProcess({ status: VideoStatus.Recording });
+        },
+        onSequenceRecordingStart: (sequenceNumber, sequencePosition) => {
+          this.updateCurrentVideoAndNotifyRendererProcess({
+            status: VideoStatus.Recording,
+            currentSequence: sequenceNumber,
+            currentSequencePosition: sequencePosition,
+          });
         },
         onMoveFilesStart: () => {
           this.updateCurrentVideoAndNotifyRendererProcess({ status: VideoStatus.MovingFiles });

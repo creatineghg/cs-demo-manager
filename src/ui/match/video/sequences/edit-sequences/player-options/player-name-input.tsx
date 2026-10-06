@@ -8,7 +8,14 @@ type Props = CellProps<SequencePlayerOptions>;
 
 export function PlayerNameInput({ rowIndex }: Props) {
   const { options, update } = usePlayersOptions();
-  const [playerName, setPlayerName] = useState(options[rowIndex].playerName);
+  const optionsPlayerName = options[rowIndex].playerName;
+  const [playerName, setPlayerName] = useState(optionsPlayerName);
+  // Sync the input when names are updated from outside of this input (e.g. hide player names button).
+  const [previousOptionsPlayerName, setPreviousOptionsPlayerName] = useState(optionsPlayerName);
+  if (optionsPlayerName !== previousOptionsPlayerName) {
+    setPreviousOptionsPlayerName(optionsPlayerName);
+    setPlayerName(optionsPlayerName);
+  }
   // Player's name edition is available only on Windows
   const isDisabled = !window.csdm.isWindows;
 

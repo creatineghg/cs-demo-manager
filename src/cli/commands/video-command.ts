@@ -55,6 +55,7 @@ import {
   filterPlayerKills,
 } from 'csdm/common/video/highlights/build-player-highlights';
 import type { Match } from 'csdm/common/types/match';
+import { anonymizePlayersOptions } from 'csdm/common/video/sequences/anonymize-players-options';
 
 export type VideoCommandConfig = {
   demoPath: string;
@@ -166,6 +167,7 @@ export class VideoCommand extends Command {
   private readonly topFlag = 'top';
   private readonly noAnalyzeFlag = 'no-analyze';
   private readonly jsonFlag = 'json';
+  private readonly hidePlayerNamesFlag = 'hide-player-names';
   private outputFolderPath: string | undefined;
   private demoPath: string = '';
   private startTick: number = 0;
@@ -212,6 +214,7 @@ export class VideoCommand extends Command {
   private minKillsInRound: number | undefined;
   private top: number | undefined;
   private analyze = true;
+  private hidePlayerNames: 'all' | 'others' | undefined;
   private output = new CliOutput(false);
 
   public getDescription() {
@@ -311,6 +314,9 @@ export class VideoCommand extends Command {
     console.log(`  --${this.minKillsInRoundFlag} <number> (ignore rounds with less kills, won clutches are kept)`);
     console.log(`  --${this.topFlag} <number> (keep only the N highlights with the best score)`);
     console.log(`  --${this.roundsFlag}, --${this.weaponsFlag}, --${this.headshotsOnlyFlag} (same as player mode)`);
+    console.log(
+      `  --${this.hidePlayerNamesFlag} <all|others> (player and highlights modes, HLAE, replace names in the kill feed, "others" keeps the --${this.steamIdsFlag} players names)`,
+    );
     console.log(
       `  --${this.startSecondsBeforeFlag} <number> (default: 3), --${this.endSecondsAfterFlag} <number> (default: 2)`,
     );
@@ -416,6 +422,21 @@ export class VideoCommand extends Command {
 
         if (parameters.sequences.length === 0) {
           throw new Error('No sequences generated. Check that the players have matching events in the demo.');
+        }
+
+        const { hidePlayerNames } = this;
+        if (hidePlayerNames) {
+          const keepSteamIds = hidePlayerNames === 'others' ? this.steamIds : [];
+          parameters.sequences = parameters.sequences.map((sequence) => {
+            return {
+              ...sequence,
+              playersOptions: anonymizePlayersOptions(
+                sequence.playersOptions,
+                keepSteamIds,
+                (index) => `Player ${index}`,
+              ),
+            };
+          });
         }
       } else {
         const player = this.focusPlayerSteamId ? await fetchPlayer(this.focusPlayerSteamId) : undefined;
@@ -715,7 +736,13 @@ export class VideoCommand extends Command {
 
       switch (updatedVideo.status) {
         case VideoStatus.Recording:
-          this.output.logOrEvent('Recording in progress...', 'progress', progressEvent);
+          this.output.logOrEvent(
+            updatedVideo.currentSequence === undefined
+              ? 'Recording in progress...'
+              : `Recording sequence #${updatedVideo.currentSequence} (${updatedVideo.currentSequencePosition}/${updatedVideo.sequences.length})...`,
+            'progress',
+            progressEvent,
+          );
           break;
         case VideoStatus.MovingFiles:
           this.output.logOrEvent('Moving files...', 'progress', progressEvent);
@@ -853,6 +880,7 @@ export class VideoCommand extends Command {
         [this.topFlag]: { type: 'string' },
         [this.noAnalyzeFlag]: { type: 'boolean' },
         [this.jsonFlag]: { type: 'boolean' },
+        [this.hidePlayerNamesFlag]: { type: 'string' },
       },
       allowPositionals: true,
       args: this.args,
@@ -935,6 +963,14 @@ export class VideoCommand extends Command {
       this.headshotsOnly = values[this.headshotsOnlyFlag] === true;
       this.minKillsInRound = this.parsePositiveIntegerFlag(values[this.minKillsInRoundFlag], this.minKillsInRoundFlag);
       this.top = this.parsePositiveIntegerFlag(values[this.topFlag], this.topFlag);
+
+      const hidePlayerNames = values[this.hidePlayerNamesFlag];
+      if (hidePlayerNames !== undefined) {
+        if (hidePlayerNames !== 'all' && hidePlayerNames !== 'others') {
+          throw new InvalidArgument(`--${this.hidePlayerNamesFlag} must be "all" or "others"`);
+        }
+        this.hidePlayerNames = hidePlayerNames;
+      }
 
       const perspectiveValue = values[this.perspectiveFlag];
       if (typeof perspectiveValue === 'string') {

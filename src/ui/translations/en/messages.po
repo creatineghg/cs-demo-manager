@@ -5061,6 +5061,15 @@ msgctxt "Select label of video encoder"
 msgid "Encoder software"
 msgstr "Encoder software"
 
+#: src/ui/match/video/fast-seek-checkbox.tsx
+msgctxt "Checkbox label"
+msgid "Fast seek between sequences"
+msgstr "Fast seek between sequences"
+
+#: src/ui/match/video/fast-seek-checkbox.tsx
+msgid "Jump directly to the next sequence instead of restarting the demo from the beginning. Disable it if some sequences are not recorded."
+msgstr "Jump directly to the next sequence instead of restarting the demo from the beginning. Disable it if some sequences are not recorded."
+
 #: src/ui/match/video/ffmpeg/audio-codec-input.tsx
 msgctxt "Input label"
 msgid "Audio codec"
@@ -5116,6 +5125,20 @@ msgstr "An error occurred while installing FFmpeg"
 msgctxt "Input label"
 msgid "Output parameters"
 msgstr "Output parameters"
+
+#: src/ui/match/video/ffmpeg/ffmpeg-preset-select.tsx
+msgctxt "Select option FFmpeg preset"
+msgid "Custom"
+msgstr "Custom"
+
+#: src/ui/match/video/ffmpeg/ffmpeg-preset-select.tsx
+msgctxt "Select label"
+msgid "Encoding preset"
+msgstr "Encoding preset"
+
+#: src/ui/match/video/ffmpeg/ffmpeg-preset-select.tsx
+msgid "Presets fill the codec, container, quality and output parameters. Hardware presets require a compatible GPU."
+msgstr "Presets fill the codec, container, quality and output parameters. Hardware presets require a compatible GPU."
 
 #: src/ui/match/video/ffmpeg/ffmpeg-update-button.tsx
 msgid "Updating FFmpeg…"
@@ -5359,6 +5382,36 @@ msgstr "Images + video"
 msgctxt "Select label"
 msgid "Recording system"
 msgstr "Recording system"
+
+#: src/ui/match/video/recording-window-mode-select.tsx
+msgctxt "Select option game window mode"
+msgid "Normal"
+msgstr "Normal"
+
+#: src/ui/match/video/recording-window-mode-select.tsx
+msgctxt "Select option game window mode"
+msgid "Background"
+msgstr "Background"
+
+#: src/ui/match/video/recording-window-mode-select.tsx
+msgctxt "Select option game window mode"
+msgid "Off-screen"
+msgstr "Off-screen"
+
+#: src/ui/match/video/recording-window-mode-select.tsx
+msgctxt "Select label"
+msgid "Game window"
+msgstr "Game window"
+
+#: src/ui/match/video/resolution-preset-select.tsx
+msgctxt "Select option resolution preset"
+msgid "Custom"
+msgstr "Custom"
+
+#: src/ui/match/video/resolution-preset-select.tsx
+msgctxt "Select label"
+msgid "Resolution"
+msgstr "Resolution"
 
 #: src/ui/match/video/sequence/cameras/focus-camera-kill-pov-input.tsx
 msgctxt "Select option"
@@ -5832,6 +5885,21 @@ msgstr "Override CFG"
 #: src/ui/match/video/sequences/edit-sequences/edit-sequences-settings-dialog.tsx
 msgid "Override player options"
 msgstr "Override player options"
+
+#: src/ui/match/video/sequences/edit-sequences/player-options/hide-player-names-buttons.tsx
+msgctxt "Anonymized player name in videos"
+msgid "Player {index}"
+msgstr "Player {index}"
+
+#: src/ui/match/video/sequences/edit-sequences/player-options/hide-player-names-buttons.tsx
+msgctxt "Button"
+msgid "Hide player names"
+msgstr "Hide player names"
+
+#: src/ui/match/video/sequences/edit-sequences/player-options/hide-player-names-buttons.tsx
+msgctxt "Button"
+msgid "Restore player names"
+msgstr "Restore player names"
 
 #: src/ui/match/video/sequences/required-disk-space.tsx
 msgctxt "Disk usage in megabyte"
@@ -8566,6 +8634,10 @@ msgstr "Waiting…"
 #: src/ui/videos/video-entry.tsx
 msgid "In-game recording in progress…"
 msgstr "In-game recording in progress…"
+
+#: src/ui/videos/video-entry.tsx
+msgid "Recording sequence #{number} ({position} / {sequenceCount})…"
+msgstr "Recording sequence #{number} ({position} / {sequenceCount})…"
 
 #: src/ui/videos/video-entry.tsx
 msgid "Moving final files…"

@@ -13,6 +13,7 @@ import { XRayCheckbox } from 'csdm/ui/match/video/x-ray-checkbox';
 import { Checkbox } from 'csdm/ui/components/inputs/checkbox';
 import { CfgInput } from 'csdm/ui/match/video/cfg-input';
 import { SequencePlayersOptions } from './player-options/sequence-players-options';
+import { HidePlayerNamesButtons } from './player-options/hide-player-names-buttons';
 import { usePlayersOptions } from './player-options/use-players-options';
 import { PlayerVoicesCheckbox } from 'csdm/ui/match/video/player-voices-checkbox';
 import type { Sequence } from 'csdm/common/types/sequence';
@@ -185,8 +186,11 @@ export function EditSequenceSettingsDialog() {
                 />
 
                 <CollapseTransition isVisible={state.overridePlayerOptions}>
-                  <div className="max-h-[200px] overflow-y-auto">
-                    <SequencePlayersOptions />
+                  <div className="flex flex-col gap-y-4">
+                    <HidePlayerNamesButtons />
+                    <div className="max-h-[200px] overflow-y-auto">
+                      <SequencePlayersOptions />
+                    </div>
                   </div>
                 </CollapseTransition>
               </div>

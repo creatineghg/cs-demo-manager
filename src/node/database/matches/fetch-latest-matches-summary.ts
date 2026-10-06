@@ -2,7 +2,7 @@ import type { DemoSource, Game } from 'csdm/common/types/counter-strike';
 import { TeamLetter } from 'csdm/common/types/counter-strike';
 import { db } from 'csdm/node/database/database';
 
-export type MatchSummaryPlayer = {
+type MatchSummaryPlayer = {
   steamId: string;
   name: string;
   teamName: string;

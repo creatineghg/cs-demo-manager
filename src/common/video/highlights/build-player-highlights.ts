@@ -5,7 +5,7 @@ import type { WeaponName } from 'csdm/common/types/counter-strike';
 import type { Sequence } from 'csdm/common/types/sequence';
 import type { VideoSettings } from 'csdm/node/settings/settings';
 
-export type HighlightKill = {
+type HighlightKill = {
   tick: number;
   victimSteamId: string;
   victimName: string;

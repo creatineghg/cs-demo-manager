@@ -21,7 +21,7 @@ const av1PresetsByPriority: FfmpegPresetId[] = [
  * Hardware encoders are compiled in FFmpeg builds even when the GPU doesn't support them, a real encode is the only
  * reliable way to know if they are usable. It also validates the preset's parameters.
  */
-export function testFfmpegPreset(ffmpegExecutablePath: string, preset: FfmpegPreset): Promise<FfmpegPresetTestResult> {
+function testFfmpegPreset(ffmpegExecutablePath: string, preset: FfmpegPreset): Promise<FfmpegPresetTestResult> {
   const args = [
     '-hide_banner',
     '-loglevel',

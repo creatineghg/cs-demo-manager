@@ -11,6 +11,7 @@ import { EncoderSoftware } from 'csdm/common/types/encoder-software';
 import type { VideoContainer } from 'csdm/common/types/video-container';
 import type { Camera } from 'csdm/common/types/camera';
 import { hasPixelFormatParameter } from 'csdm/node/video/ffmpeg/ffmpeg-presets';
+import { buildSequenceStartCommand } from './watch-recording-progress';
 
 function getHlaeOutputFolderPath(outputFolderPath: string, sequence: Sequence) {
   return `${windowsToUnixPathSeparator(outputFolderPath)}/${getSequenceName(sequence)}`;
@@ -262,6 +263,8 @@ export function buildCs2VideoJsonActions({
     }
 
     if (type === 'record') {
+      // Lets CS:DM know which sequence is being recorded by reading the plugin log file.
+      json.addExecCommand(sequence.startTick, buildSequenceStartCommand(sequence.number));
       if (recordingSystem === RecordingSystem.HLAE) {
         json
           .addExecCommand(sequence.startTick, `mirv_streams record start`)

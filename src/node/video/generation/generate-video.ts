@@ -32,6 +32,7 @@ import { DisplayMode } from 'csdm/common/types/display-mode';
 import { replaceFilenamePlaceholders } from './replace-filename-placeholders';
 import { RecordingWindowMode } from 'csdm/common/types/recording-window-mode';
 import { keepGameWindowInBackground } from 'csdm/node/counter-strike/launcher/keep-game-window-in-background';
+import { watchRecordingProgress } from './watch-recording-progress';
 
 export type Parameters = {
   videoId: string;
@@ -60,6 +61,8 @@ export type Parameters = {
   onGameStart: () => void;
   onMoveFilesStart: () => void;
   onSequenceStart: (sequenceNumber: number, sequencePosition: number) => void;
+  // Called when the game starts recording a sequence (CS2 only).
+  onSequenceRecordingStart?: (sequenceNumber: number, sequencePosition: number) => void;
   onConcatenateSequencesStart: () => void;
 };
 
@@ -238,6 +241,12 @@ export async function generateVideo(parameters: Parameters) {
 
   const shouldGenerateVideo = recordingOutput !== RecordingOutput.Images;
   const gameWindowKeeper = keepGameWindowInBackground(game, parameters.windowMode ?? RecordingWindowMode.Normal);
+  const recordingProgressWatcher = await watchRecordingProgress(game, (sequenceNumber) => {
+    const position = sequences.findIndex((sequence) => sequence.number === sequenceNumber) + 1;
+    if (position > 0) {
+      parameters.onSequenceRecordingStart?.(sequenceNumber, position);
+    }
+  });
   try {
     if (recordingSystem === RecordingSystem.HLAE) {
       await watchDemoWithHlae({
@@ -266,6 +275,7 @@ export async function generateVideo(parameters: Parameters) {
       });
     }
     gameWindowKeeper.stop();
+    recordingProgressWatcher.stop();
 
     throwIfAborted(signal);
 
@@ -306,6 +316,7 @@ export async function generateVideo(parameters: Parameters) {
     throw error;
   } finally {
     gameWindowKeeper.stop();
+    recordingProgressWatcher.stop();
     await uninstallCounterStrikeServerPlugin(game);
   }
 }

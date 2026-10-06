@@ -7,17 +7,21 @@ import { ErrorCode } from 'csdm/common/error-code';
 import { getErrorCodeFromError } from 'csdm/server/get-error-code-from-error';
 import { isLinux } from '../os/is-linux';
 
+// Returns the path of the log file written by the CS:DM server plugin, it may not exist yet.
+export async function getCounterStrikePluginLogFilePath(game: Game) {
+  const executablePath = await getCounterStrikeExecutablePath(game);
+  const executableDir = path.dirname(executablePath);
+
+  return isLinux && game !== Game.CSGO
+    ? path.join(executableDir, 'bin', 'linuxsteamrt64', 'csdm.log')
+    : path.join(executableDir, 'csdm.log');
+}
+
 // Returns the path to the Counter-Strike log file which is next to the game executable.
 export async function getCounterStrikeLogFilePath(game: Game) {
   let logFilePath = '';
   try {
-    const executablePath = await getCounterStrikeExecutablePath(game);
-    const executableDir = path.dirname(executablePath);
-
-    logFilePath =
-      isLinux && game !== Game.CSGO
-        ? path.join(executableDir, 'bin', 'linuxsteamrt64', 'csdm.log')
-        : path.join(executableDir, 'csdm.log');
+    logFilePath = await getCounterStrikePluginLogFilePath(game);
 
     if (!(await fs.pathExists(logFilePath))) {
       throw new FileNotFound(logFilePath);
