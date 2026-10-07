@@ -1,5 +1,7 @@
 # Automating CS Demo Manager (CLI guide for scripts and AI agents)
 
+Installing this version from source and verifying it: [handoff-local-setup.md](handoff-local-setup.md).
+
 This guide covers the part of a clip pipeline between "demos are on disk" and "video clips are exported":
 analyze demos, find highlights, record them with the game and encode them (e.g. 4K 120 FPS AV1).
 
