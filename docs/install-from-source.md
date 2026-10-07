@@ -1,11 +1,10 @@
-# Handoff: install and verify the automation update locally
+# Install from source and verify recordings
 
-This document is written for an AI agent (e.g. Claude Code) running on a Windows PC where CS Demo Manager is driven by
-scripts. It explains what changed on the `main` branch of this fork, how to install it and how to verify it before
-switching an existing automation to it. Decide each step based on what is already installed on the machine.
+How to build this fork from source on Windows and check that video recording works before using it in scripts. The
+steps can be followed by a person or by an AI agent.
 
-The changes have only been validated with unit tests, linting and type checking (Linux sandbox without Counter-Strike
-or GPU). Nothing has been tested in-game yet, follow the verification steps below before relying on it.
+The recording changes are covered by unit tests, linting and type checking. Check them on your own setup with the
+verification steps below before relying on them.
 
 ## What's new
 
@@ -58,7 +57,7 @@ daemon is not replaced while clients are connected.
 3. Short recording test with 2-3 highlights:
    `scripts\cli.bat video "<demo.dem>" --mode highlights --steamids <steamId> --top 3 --resolution 4k --framerate 120 --preset auto --output "<existing folder>" --json`
    - Every sequence must be in the output folder (`done` event lists the files). If one is missing, retry with
-     `--no-fast-seek` and report it.
+     `--no-fast-seek`.
    - The game window must stay in the background. If it doesn't, or if the recording stalls, retry with
      `--window-mode off-screen`, then `--window-mode normal`.
    - Check the resolution of the output with `ffprobe`. A 4K game window larger than the monitor may be limited to the
@@ -68,24 +67,21 @@ daemon is not replaced while clients are connected.
 Logs: `%USERPROFILE%\.csdm\logs\csdm.log` (daemon, `.csdm-dev` for dev builds) and `csdm.log` next to `cs2.exe` (game plugin, it contains the
 executed commands and the `CSDM_SEQUENCE_START <n>` markers).
 
-## 4. Integrate with the existing automation
+## 4. Use it from scripts
 
-- Replace manual tick ranges by `video <demo...> --mode highlights --steamids <id> --top <n>` or, for full control,
+- Record highlights with `video <demo...> --mode highlights --steamids <id> --top <n>` or, for full control,
   `highlights --json` -> pick highlights -> write a `--config-file` JSON with the chosen `sequences`.
 - Parse stdout line by line when using `--json`, wait for `done`/`error` events and check the exit code.
-- Downloads:
-  - `dl-valve --history --steamid <id>` after a first run with `--auth-code` and `--known-code` (the Steam API key comes
-    from the app settings or `--steam-api-key`). Share codes obtained elsewhere (e.g. other tools using the Steam or
-    Leetify APIs) can be downloaded with `dl-valve <shareCode1> <shareCode2>`.
-  - Leetify is not integrated in the CLI: its API could not be verified from the sandbox. If another tool provides
-    share codes or demo URLs from Leetify, pass the share codes to `dl-valve`, or download the demo files directly and
-    give their paths to `analyze`/`video`.
-- Keep API keys and authentication codes out of the repository: they belong to the app settings, environment
-  variables or local files of the automation, the `share-code-history.json` file is stored in the app folder (`%USERPROFILE%\.csdm`).
+- Downloads: `dl-valve --history --steamid <id>` after a first run with `--auth-code` and `--known-code` (the Steam API
+  key comes from the app settings or `--steam-api-key`). Share codes from other sources can be downloaded with
+  `dl-valve <shareCode1> <shareCode2>`, and demo files downloaded by other tools can be passed directly to
+  `analyze`/`video`.
+- Keep API keys and authentication codes out of repositories: use the app settings, environment variables or local
+  files. The `share-code-history.json` file is stored in the app folder (`%USERPROFILE%\.csdm`).
 
 ## 5. Known limitations
 
-- The CS2 server plugin binaries in `static/` were not modified (they can't be rebuilt from the sandbox). Everything
-  new works through the existing plugin commands.
+- The CS2 server plugin binaries in `static/` were not modified, everything new works through the existing plugin
+  commands.
 - The Steam match history API may return the latest match a few minutes after it ended.
 - HLAE is Windows only, Linux recordings use the game `startmovie` command (TGA images, large disk usage).
