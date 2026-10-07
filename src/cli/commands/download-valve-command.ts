@@ -28,11 +28,24 @@ import {
 import { isDownloadLinkExpired } from 'csdm/node/download/is-download-link-expired';
 import { DownloadBaseCommand } from './download-base-command';
 import { SteamNotRunning } from 'csdm/node/counter-strike/launcher/errors/steam-not-running';
+import { fetchNextMatchShareCodes } from 'csdm/node/valve-match/fetch-next-match-share-codes';
+import { getShareCodeHistoryEntry, saveShareCodeHistoryEntry } from 'csdm/node/valve-match/share-code-history-state';
+import { getSteamApiKey, isValidSteamApiKey } from 'csdm/node/steam-web-api/get-steam-api-key';
 const streamPipeline = util.promisify(pipeline);
 
 export class DownloadValveCommand extends DownloadBaseCommand {
   public static Name = 'dl-valve';
   private readonly shareCodes: string[] = [];
+  private readonly historyFlag = '--history';
+  private readonly steamIdFlag = '--steamid';
+  private readonly authCodeFlag = '--auth-code';
+  private readonly knownCodeFlag = '--known-code';
+  private readonly steamApiKeyFlag = '--steam-api-key';
+  private useHistory = false;
+  private steamId: string | undefined;
+  private authenticationCode: string | undefined;
+  private knownShareCode: string | undefined;
+  private steamApiKey: string | undefined;
   private demoPathBeingDownloaded: string | undefined;
 
   public getDescription() {
@@ -62,6 +75,19 @@ export class DownloadValveCommand extends DownloadBaseCommand {
     console.log('');
     console.log('To change the directory where demos will be downloaded:');
     console.log(`    csdm ${DownloadValveCommand.Name} ${this.outputFlag} "C:\\Users\\username\\Downloads"`);
+    console.log('');
+    console.log(
+      `With ${this.historyFlag}, every match played since the last run is downloaded using the Steam match history API`,
+    );
+    console.log('instead of the recent games list of the game (limited to the last matches).');
+    console.log(
+      'The game authentication code and a share code of one of your matches are available at https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128',
+    );
+    console.log('They are saved locally after the first run, the next runs only need --history.');
+    console.log(
+      `    csdm ${DownloadValveCommand.Name} ${this.historyFlag} ${this.steamIdFlag} 76561198000000000 ${this.authCodeFlag} XXXX-XXXXX-XXXX ${this.knownCodeFlag} CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`,
+    );
+    console.log(`    ${this.steamApiKeyFlag} <key> overrides the Steam API key of the app settings.`);
   }
 
   public constructor(args: string[]) {
@@ -75,7 +101,9 @@ export class DownloadValveCommand extends DownloadBaseCommand {
     this.outputFolderPath = await this.getOutputFolder();
     await this.assertOutputFolderIsValid(this.outputFolderPath);
 
-    if (this.shareCodes.length > 0) {
+    if (this.useHistory) {
+      await this.downloadMatchesFromHistory();
+    } else if (this.shareCodes.length > 0) {
       for (const shareCode of this.shareCodes) {
         console.log(`Downloading match with share code ${shareCode}...`);
         const { matchId, reservationId, tvPort } = decodeMatchShareCode(shareCode);
@@ -117,6 +145,30 @@ export class DownloadValveCommand extends DownloadBaseCommand {
               this.exitWithFailure();
             }
             break;
+          case this.historyFlag:
+            this.useHistory = true;
+            break;
+          case this.steamIdFlag:
+          case this.authCodeFlag:
+          case this.knownCodeFlag:
+          case this.steamApiKeyFlag: {
+            const value = this.args[index + 1];
+            if (value === undefined || this.isFlagArgument(value)) {
+              console.log(`Missing ${arg} value`);
+              this.exitWithFailure();
+            }
+            index += 1;
+            if (arg === this.steamIdFlag) {
+              this.steamId = value;
+            } else if (arg === this.authCodeFlag) {
+              this.authenticationCode = value;
+            } else if (arg === this.knownCodeFlag) {
+              this.knownShareCode = value;
+            } else {
+              this.steamApiKey = value;
+            }
+            break;
+          }
           default:
             console.log(`Unknown flag: ${arg}`);
             this.exitWithFailure();
@@ -178,7 +230,7 @@ export class DownloadValveCommand extends DownloadBaseCommand {
     console.log(`Demo downloaded at ${demoPath}`);
   }
 
-  private async fetchMatches(args?: string[]) {
+  private async fetchMatches(args?: string[], failOnError = false) {
     try {
       const { matches } = await startBoiler({
         args,
@@ -218,9 +270,91 @@ export class DownloadValveCommand extends DownloadBaseCommand {
           break;
       }
 
+      if (failOnError) {
+        throw new Error(message);
+      }
       console.error(message);
 
       return [];
+    }
+  }
+
+  private async downloadMatchesFromHistory() {
+    const steamId = this.steamId;
+    if (!steamId) {
+      console.log(`The ${this.steamIdFlag} flag is required with ${this.historyFlag}`);
+      return this.exitWithFailure();
+    }
+
+    const entry = await getShareCodeHistoryEntry(steamId);
+    const authenticationCode = this.authenticationCode ?? entry?.authenticationCode;
+    let lastShareCode = this.knownShareCode ?? entry?.lastShareCode;
+    if (!authenticationCode || !lastShareCode) {
+      console.log(
+        `The game authentication code (${this.authCodeFlag}) and a known share code (${this.knownCodeFlag}) are required the first time.`,
+      );
+      return this.exitWithFailure();
+    }
+    try {
+      decodeMatchShareCode(lastShareCode);
+    } catch {
+      console.log(`Invalid share code: ${lastShareCode}`);
+      return this.exitWithFailure();
+    }
+
+    const steamApiKey = this.steamApiKey ?? (await getSteamApiKey());
+    if (!isValidSteamApiKey(steamApiKey)) {
+      console.log(`A Steam API key is required, set it in the app settings or use ${this.steamApiKeyFlag}.`);
+      return this.exitWithFailure();
+    }
+
+    await saveShareCodeHistoryEntry(steamId, { authenticationCode, lastShareCode });
+
+    console.log('Retrieving matches from the Steam match history...');
+    let shareCodes: string[];
+    try {
+      shareCodes = await fetchNextMatchShareCodes({
+        steamApiKey,
+        steamId,
+        authenticationCode,
+        knownShareCode: lastShareCode,
+      });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      return this.exitWithFailure();
+    }
+
+    // The known share code is downloaded too when it's provided explicitly, it's usually the latest match.
+    if (this.knownShareCode && entry?.lastShareCode !== this.knownShareCode) {
+      shareCodes.unshift(this.knownShareCode);
+    }
+
+    if (shareCodes.length === 0) {
+      console.log('No new matches found. The Steam API may take a few minutes to return a match that just ended.');
+      return;
+    }
+
+    for (const [index, shareCode] of shareCodes.entries()) {
+      console.log(`Downloading match ${index + 1}/${shareCodes.length} (${shareCode})...`);
+      const { matchId, reservationId, tvPort } = decodeMatchShareCode(shareCode);
+      try {
+        const matches = await this.fetchMatches(
+          [matchId.toString(), reservationId.toString(), tvPort.toString()],
+          true,
+        );
+        if (matches.length === 0) {
+          console.log('Demo link expired.');
+        } else {
+          await this.processMatchInfo(matches[0]);
+        }
+      } catch (error) {
+        // Stop here, the next run will retry from this match.
+        console.error(error instanceof Error ? error.message : error);
+        return this.exitWithFailure();
+      }
+
+      lastShareCode = shareCode;
+      await saveShareCodeHistoryEntry(steamId, { authenticationCode, lastShareCode });
     }
   }
 

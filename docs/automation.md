@@ -29,6 +29,8 @@ csdm doctor --json
 
 # 1. Download the latest matches (each downloaded demo path is printed as "Demo downloaded at <path>").
 csdm dl-valve
+#    Or every match played since the last run with the Steam match history API (see "Valve demos" below).
+csdm dl-valve --history --steamid 76561198000000000
 
 # 2. Analyze them (optional, video/highlights analyze missing demos automatically).
 csdm analyze "C:\Users\me\Videos\demos" --json
@@ -43,6 +45,24 @@ csdm video "C:\demos\match1.dem" "C:\demos\match2.dem" --mode highlights --steam
 ```
 
 ## Commands
+
+### `dl-valve`
+
+Without arguments, downloads the demos of the recent games list returned by the game coordinator (the last matches
+only, it sometimes misses the most recent one). Steam must be running and logged in.
+
+`--history` uses the official Steam match history API instead: every match played after the last downloaded one is
+downloaded. The first run needs the game authentication code and the share code of one of your matches, both available
+on the [Steam help page](https://help.steampowered.com/en/wizard/HelpWithGameIssue/?appid=730&issueid=128):
+
+```sh
+csdm dl-valve --history --steamid 76561198000000000 --auth-code XXXX-XXXXX-XXXX --known-code CSGO-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+```
+
+They are saved in `share-code-history.json` in the app folder, the next runs only need `--history --steamid <id>`.
+A Steam API key is required (app settings or `--steam-api-key`). The API can take a few minutes to return a match that
+just ended, re-run the command later if the latest match is missing. The download itself still goes through the Steam
+client (it must be running), demos older than ~30 days are not available anymore on Valve servers.
 
 ### `doctor`
 
