@@ -1,8 +1,8 @@
 # Handoff: install and verify the automation update locally
 
-This document is written for an AI agent (e.g. Claude Code) running on the user's Windows PC. It explains what changed
-on the `main` branch of this fork, how to install it and how to verify it before switching the existing
-automation to it. Decide each step based on what is already installed on the machine.
+This document is written for an AI agent (e.g. Claude Code) running on a Windows PC where CS Demo Manager is driven by
+scripts. It explains what changed on the `main` branch of this fork, how to install it and how to verify it before
+switching an existing automation to it. Decide each step based on what is already installed on the machine.
 
 The changes have only been validated with unit tests, linting and type checking (Linux sandbox without Counter-Strike
 or GPU). Nothing has been tested in-game yet, follow the verification steps below before relying on it.
@@ -75,9 +75,9 @@ executed commands and the `CSDM_SEQUENCE_START <n>` markers).
 - Parse stdout line by line when using `--json`, wait for `done`/`error` events and check the exit code.
 - Downloads:
   - `dl-valve --history --steamid <id>` after a first run with `--auth-code` and `--known-code` (the Steam API key comes
-    from the app settings or `--steam-api-key`). Share codes obtained elsewhere (e.g. an existing Python script using
-    the Steam or Leetify APIs) can be downloaded with `dl-valve <shareCode1> <shareCode2>`.
-  - Leetify is not integrated in the CLI: its API could not be verified from the sandbox. If the local script gets
+    from the app settings or `--steam-api-key`). Share codes obtained elsewhere (e.g. other tools using the Steam or
+    Leetify APIs) can be downloaded with `dl-valve <shareCode1> <shareCode2>`.
+  - Leetify is not integrated in the CLI: its API could not be verified from the sandbox. If another tool provides
     share codes or demo URLs from Leetify, pass the share codes to `dl-valve`, or download the demo files directly and
     give their paths to `analyze`/`video`.
 - Keep API keys and authentication codes out of the repository: they belong to the app settings, environment
