@@ -1,7 +1,7 @@
 # Handoff: install and verify the automation update locally
 
 This document is written for an AI agent (e.g. Claude Code) running on the user's Windows PC. It explains what changed
-on the `claude/funny-ramanujan-anw9ff` branch, how to install it and how to verify it before switching the existing
+on the `main` branch of this fork, how to install it and how to verify it before switching the existing
 automation to it. Decide each step based on what is already installed on the machine.
 
 The changes have only been validated with unit tests, linting and type checking (Linux sandbox without Counter-Strike
@@ -26,12 +26,9 @@ The complete CLI reference, including the JSON event format, is in [automation.m
 ## 1. Get the code
 
 ```powershell
-git fetch origin claude/funny-ramanujan-anw9ff
-git checkout claude/funny-ramanujan-anw9ff
+git checkout main
+git pull origin main
 ```
-
-The branch has not been merged into `main` on purpose: merge it only after the verification below succeeds
-(`git checkout main; git merge claude/funny-ramanujan-anw9ff; git push`).
 
 ## 2. Build
 
